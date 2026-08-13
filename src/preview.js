@@ -95,6 +95,7 @@ document.addEventListener('keydown', (event) => {
 
 if (previewMode === 'hover') {
   document.addEventListener('pointerenter', () => void bridge.keepHover());
+  document.addEventListener('pointerleave', () => void bridge.releaseHover());
   document.addEventListener('click', () => void bridge.openFull());
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "desktop-note",
-  "version": "0.3.17",
+  "version": "0.3.18",
   "description": "支持待办与图文暂存工作区的透明桌面便签。",
   "main": "main.js",
   "author": "",
@@ -14,7 +14,7 @@
   "build": {
     "appId": "com.desktopnote.widget",
     "productName": "桌面便签",
-    "artifactName": "桌面便签-${version}-${arch}.${ext}",
+    "artifactName": "desktop-note-${version}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },

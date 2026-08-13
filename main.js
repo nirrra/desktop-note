@@ -56,7 +56,8 @@ const PREVIEW_HORIZONTAL_CHROME = 24;
 const PREVIEW_VERTICAL_CHROME = 82;
 const HOVER_PREVIEW_GAP = 4;
 const HOVER_PREVIEW_OPEN_DELAY = 70;
-const HOVER_PREVIEW_CLOSE_DELAY = 120;
+const HOVER_PREVIEW_CLOSE_DELAY = 220;
+const HOVER_PREVIEW_KEEP_PAD = 20;
 const HOVER_PREVIEW_MAX_WIDTH = 360;
 const HOVER_PREVIEW_MAX_HEIGHT = 720;
 const HOVER_PREVIEW_MIN_WIDTH = 176;
@@ -82,6 +83,7 @@ let hoverPreviewItemId = null;
 let hoverPreviewWantedId = null;
 let hoverPreviewShowTimer = null;
 let hoverPreviewHideTimer = null;
+let hoverPreviewProtectUntil = 0;
 let hoverAnchorRect = null;
 let tray = null;
 let isQuitting = false;
@@ -529,25 +531,65 @@ function getHoverPreviewBounds(item) {
   return { x, y, width, height, side: useLeft ? 'left' : 'right' };
 }
 
-function getHoverAnchorScreenRect() {
-  if (!hoverAnchorRect || !mainWindow || mainWindow.isDestroyed()) return null;
-  const content = mainWindow.getContentBounds();
-  return {
-    x: content.x + hoverAnchorRect.x,
-    y: content.y + hoverAnchorRect.y,
-    width: hoverAnchorRect.width,
-    height: hoverAnchorRect.height,
-  };
+function isPreviewWindowOpen(candidate) {
+  return Boolean(candidate && !candidate.isDestroyed());
 }
 
-function isCursorOverHoverAnchor(padding = 8) {
-  const rect = getHoverAnchorScreenRect();
-  if (!rect) return false;
+function pointIsNearBounds(point, bounds, padding = 0) {
+  if (!point || !bounds) return false;
+  return point.x >= bounds.x - padding
+    && point.x <= bounds.x + bounds.width + padding
+    && point.y >= bounds.y - padding
+    && point.y <= bounds.y + bounds.height + padding;
+}
+
+function getHoverAnchorScreenRects() {
+  if (!hoverAnchorRect || !mainWindow || mainWindow.isDestroyed()) return [];
+  const seen = new Set();
+  const rects = [];
+  for (const origin of [mainWindow.getContentBounds(), mainWindow.getBounds()]) {
+    const key = `${origin.x},${origin.y}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rects.push({
+      x: origin.x + hoverAnchorRect.x,
+      y: origin.y + hoverAnchorRect.y,
+      width: hoverAnchorRect.width,
+      height: hoverAnchorRect.height,
+    });
+  }
+  return rects;
+}
+
+function isCursorOverHoverAnchor(padding = 8, point = screen.getCursorScreenPoint()) {
+  return getHoverAnchorScreenRects().some((rect) => pointIsNearBounds(point, rect, padding));
+}
+
+function isCursorOverPreviewWindows(point = screen.getCursorScreenPoint()) {
+  if (isPreviewWindowOpen(hoverPreviewWindow)
+      && pointIsNearBounds(point, hoverPreviewWindow.getBounds(), HOVER_PREVIEW_KEEP_PAD)) {
+    return true;
+  }
+  return isPreviewWindowOpen(previewWindow)
+    && pointIsNearBounds(point, previewWindow.getBounds(), HOVER_PREVIEW_KEEP_PAD);
+}
+
+function shouldKeepHoverPreview() {
+  if (Date.now() < hoverPreviewProtectUntil) return true;
   const point = screen.getCursorScreenPoint();
-  return point.x >= rect.x - padding
-    && point.x <= rect.x + rect.width + padding
-    && point.y >= rect.y - padding
-    && point.y <= rect.y + rect.height + padding;
+  if (isCursorOverPreviewWindows(point)) return true;
+  if (isCursorOverHoverAnchor(HOVER_PREVIEW_KEEP_PAD, point)) return true;
+  return Boolean(
+    mainWindow
+    && !mainWindow.isDestroyed()
+    && pointIsNearBounds(point, mainWindow.getBounds(), HOVER_PREVIEW_KEEP_PAD),
+  );
+}
+
+function canShowHoverPreview() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (dockedEdge && !isEdgePreviewed) return false;
+  return true;
 }
 
 function closeHoverPreviewWindow() {
@@ -555,6 +597,7 @@ function closeHoverPreviewWindow() {
   clearTimeout(hoverPreviewHideTimer);
   hoverPreviewWantedId = null;
   hoverAnchorRect = null;
+  hoverPreviewProtectUntil = 0;
   const windowToClose = hoverPreviewWindow;
   hoverPreviewWindow = null;
   hoverPreviewItemId = null;
@@ -585,8 +628,8 @@ function attachPreviewWindowGuards(candidate) {
 
 async function showHoverPreviewWindow(id) {
   try {
-    if (!mainWindow || mainWindow.isDestroyed() || dockedEdge) return { ok: false, error: '窗口不可预览' };
-    if (previewWindow && !previewWindow.isDestroyed()) return { ok: true, skipped: true };
+    if (!canShowHoverPreview()) return { ok: false, error: '窗口不可预览' };
+    if (isPreviewWindowOpen(previewWindow)) return { ok: true, skipped: true };
     const item = await getStagingStore().getItem(String(id));
     if (!item || !['image', 'text'].includes(item.type)) return { ok: false, error: '暂存项不存在' };
     hoverPreviewItemId = item.id;
@@ -621,7 +664,6 @@ async function showHoverPreviewWindow(id) {
       hoverPreviewWindow = candidate;
       attachPreviewWindowGuards(candidate);
       candidate.setAlwaysOnTop(true, 'pop-up-menu');
-      candidate.setIgnoreMouseEvents(true, { forward: true });
       candidate.once('ready-to-show', () => {
         if (!candidate.isDestroyed()) candidate.showInactive();
       });
@@ -637,6 +679,7 @@ async function showHoverPreviewWindow(id) {
       hoverPreviewWindow.webContents.send('preview:refresh');
       if (!hoverPreviewWindow.isVisible()) hoverPreviewWindow.showInactive();
     }
+    hoverPreviewProtectUntil = Date.now() + 280;
     return { ok: true, bounds, itemType: item.type };
   } catch (error) {
     closeHoverPreviewWindow();
@@ -660,7 +703,6 @@ function scheduleHoverPreview(id, rect) {
   const delayMs = qaOutputDirectory ? 0 : HOVER_PREVIEW_OPEN_DELAY;
   hoverPreviewShowTimer = setTimeout(() => {
     if (hoverPreviewWantedId !== targetId) return;
-    if (hoverAnchorRect && !isCursorOverHoverAnchor()) return;
     void showHoverPreviewWindow(targetId);
   }, delayMs);
   return { ok: true };
@@ -670,7 +712,10 @@ function scheduleHideHoverPreview() {
   clearTimeout(hoverPreviewHideTimer);
   const delayMs = qaOutputDirectory ? 0 : HOVER_PREVIEW_CLOSE_DELAY;
   hoverPreviewHideTimer = setTimeout(() => {
-    if (isCursorOverHoverAnchor()) return;
+    if (shouldKeepHoverPreview()) {
+      if (!qaOutputDirectory) scheduleHideHoverPreview();
+      return;
+    }
     closeHoverPreviewWindow();
   }, delayMs);
   return true;
@@ -678,6 +723,7 @@ function scheduleHideHoverPreview() {
 
 function keepHoverPreview() {
   if (hoverPreviewItemId) hoverPreviewWantedId = hoverPreviewItemId;
+  hoverPreviewProtectUntil = Date.now() + 160;
   clearTimeout(hoverPreviewHideTimer);
   return true;
 }
@@ -1286,7 +1332,7 @@ function processEdgeHoverPoint(point, now = Date.now()) {
 
   edgeHoverEnteredAt = 0;
   const isOverExpandedWindow = pointIsInsideBounds(point, mainWindow.getBounds());
-  if (isOverExpandedWindow) {
+  if (isOverExpandedWindow || isPreviewWindowOpen(previewWindow) || isCursorOverPreviewWindows(point)) {
     edgeHoverLeftAt = 0;
     return getPublicWindowState();
   }
@@ -1356,9 +1402,14 @@ function handleNativeWindowMove(bounds = mainWindow?.getBounds()) {
   if (isProgrammaticMove && boundsAreClose(bounds, programmaticMoveTarget)) return false;
   if (isProgrammaticMove) finishProgrammaticMove();
 
+  const expected = dockedEdge
+    ? (isEdgePreviewed ? getEdgePreviewBounds(dockedEdge, normalBounds) : getDockedBounds(dockedEdge, normalBounds))
+    : (normalBounds ?? bounds);
+  const draggedAway = !boundsAreClose(bounds, expected, 8);
+  if (!draggedAway) return false;
+
   const undocked = undockForManualMove(bounds);
-  const draggedAway = !boundsAreClose(bounds, normalBounds ?? bounds, 8);
-  if (undocked || (!isProgrammaticMove && draggedAway)) closeHoverPreviewWindow();
+  closeHoverPreviewWindow();
   normalBounds = { ...bounds };
   scheduleStateWrite();
   scheduleManualMoveFinished();
@@ -1367,6 +1418,7 @@ function handleNativeWindowMove(bounds = mainWindow?.getBounds()) {
 
 function handleManualMoveFinished(cursorPoint = screen.getCursorScreenPoint()) {
   if (!mainWindow || mainWindow.isDestroyed() || isProgrammaticMove || dockedEdge) return;
+  if (isPreviewWindowOpen(previewWindow) || isPreviewWindowOpen(hoverPreviewWindow)) return;
   normalBounds = mainWindow.getBounds();
   const edge = detectNearestEdge(normalBounds, cursorPoint);
   edge ? dockToEdge(edge) : scheduleStateWrite();
