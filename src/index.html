@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: staging-image:; connect-src 'none'; object-src 'none'; base-uri 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>桌面便签</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main id="app" class="app" data-theme="obsidian" data-edge="" style="--panel-alpha: 0.88">
+      <section class="widget-shell" aria-label="桌面便签">
+        <header class="title-bar">
+          <div class="drag-surface" title="拖动组件；靠近屏幕边缘会自动隐藏">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 16 16">
+                <rect x="3.4" y="2.4" width="9.2" height="11.2" rx="1.6" />
+                <path d="M6 2.4v11.2M7.8 5.6h3.2M7.8 8h3.2M7.8 10.4h2.2" />
+              </svg>
+            </span>
+            <time id="todayDate" datetime="2026-08-12">2026/08/12</time>
+          </div>
+
+          <nav class="workspace-tabs" aria-label="工作区">
+            <button id="itemsTab" class="workspace-tab is-active" type="button" aria-selected="true">
+              <span>待办</span><small id="itemCount">0</small>
+            </button>
+            <button id="stagingTab" class="workspace-tab" type="button" aria-selected="false">
+              <span>暂存</span><small id="stagingCount">0</small>
+            </button>
+          </nav>
+
+          <div class="title-actions">
+            <button id="settingsButton" class="title-button" type="button" aria-label="打开设置" title="设置">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 7.1a2.9 2.9 0 1 0 0 5.8 2.9 2.9 0 0 0 0-5.8Z" /><path d="M16.1 11.3v-2.6l-2-.5-.5-1.1 1.1-1.8-1.9-1.9-1.8 1.1-1.2-.5-.5-2H6.7l-.5 2-1.2.5-1.8-1.1-1.9 1.9 1.1 1.8-.5 1.1-2 .5v2.6l2 .5.5 1.2-1.1 1.8 1.9 1.9L5 15.6l1.2.5.5 2h2.6l.5-2 1.2-.5 1.8 1.1 1.9-1.9-1.1-1.8.5-1.2 2-.5Z" /></svg>
+            </button>
+            <button id="hideButton" class="title-button" type="button" aria-label="隐藏到托盘" title="隐藏到托盘">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12" /></svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="workspace-stack">
+          <section id="itemsWorkspace" class="workspace-view" aria-label="待办工作区">
+            <div class="list-pane">
+              <section id="itemsList" class="items-list" aria-label="待办列表"></section>
+
+              <div id="emptyState" class="empty-state" hidden>
+                <span class="empty-line" aria-hidden="true"></span>
+                <strong>暂无待办</strong>
+              </div>
+            </div>
+
+            <button id="addItem" class="list-composer" type="button" aria-label="新建待办" title="新建待办 (Ctrl+N)">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg>
+              <span>新建待办</span>
+            </button>
+
+            <footer class="items-footer">
+              <span id="itemsFooterCount">共 0 条便签</span>
+              <span>拖拽排序 · 双击打开</span>
+            </footer>
+          </section>
+
+          <section id="stagingWorkspace" class="workspace-view staging-workspace" aria-label="暂存工作区" hidden>
+            <div class="list-pane">
+              <section id="stagingList" class="staging-list" aria-label="暂存列表"></section>
+
+              <div id="stagingEmpty" class="staging-empty" hidden>
+                <span class="staging-empty-mark" aria-hidden="true">T</span>
+                <strong>暂存区还是空的</strong>
+                <small>粘贴文字或拖入图片</small>
+              </div>
+            </div>
+
+            <button id="addStaging" class="list-composer" type="button" aria-label="上传图片到暂存区" title="上传图片到暂存区">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg>
+              <span>上传图片</span>
+            </button>
+
+            <footer class="staging-footer">
+              <button id="pasteStaging" type="button" title="读取当前剪贴板">Ctrl+V 粘贴</button>
+              <span aria-hidden="true">·</span>
+              <span>拖入图片</span>
+              <button id="clearStaging" class="clear-staging" type="button">清空</button>
+            </footer>
+          </section>
+        </div>
+      </section>
+
+      <button id="edgeHandle" class="edge-handle" type="button" aria-label="展开桌面便签">
+        <span></span>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5 3 5 5-5 5" /></svg>
+      </button>
+
+      <section id="settingsPanel" class="overlay-panel" aria-label="设置" hidden>
+        <header class="overlay-header">
+          <strong>设置</strong>
+          <button class="overlay-close" type="button" data-close-panel aria-label="关闭设置">×</button>
+        </header>
+
+        <div class="settings-content">
+            <section id="settingsAppearance" class="settings-section">
+              <div class="setting-block theme-setting">
+                <span class="setting-label">主题皮肤</span>
+                <div class="theme-grid" role="radiogroup" aria-label="选择皮肤">
+                  <button type="button" data-theme-choice="ivory" title="A · 素白"><i></i><span>素白</span></button>
+                  <button type="button" data-theme-choice="obsidian" title="B · 黑曜"><i></i><span>黑曜</span></button>
+                  <button type="button" data-theme-choice="smoke" title="C · 烟灰"><i></i><span>烟灰</span></button>
+                  <button type="button" data-theme-choice="classic" title="经典黄色"><i></i><span>经典黄</span></button>
+                </div>
+              </div>
+
+              <div class="setting-block opacity-block">
+                <span class="setting-label">透明度</span>
+                <label class="opacity-row" for="opacityInput">
+                  <span>透明</span>
+                  <input id="opacityInput" type="range" min="50" max="100" step="1" value="88" />
+                  <span>不透明</span>
+                  <output id="opacityValue" for="opacityInput">88%</output>
+                </label>
+                <p class="setting-tip">调整窗口背景透明度，打造轻盈的悬浮体验。</p>
+              </div>
+            </section>
+
+            <section id="settingsBehavior" class="settings-section">
+              <div class="setting-block">
+                <span class="setting-label">组件大小</span>
+                <div class="setting-row size-row">
+                  <label><span>宽</span><input id="widthInput" type="number" min="280" max="600" step="10" value="330" /><small>px</small></label>
+                  <span class="multiply">×</span>
+                  <label><span>高</span><input id="heightInput" type="number" min="180" max="500" step="10" value="230" /><small>px</small></label>
+                  <button id="applySize" type="button">应用</button>
+                </div>
+                <p class="setting-hint">修改组件尺寸后将应用到主窗口。</p>
+              </div>
+
+              <label class="setting-row toggle-row pin-row" for="pinToggle">
+                <span class="setting-copy">
+                  <span class="setting-label">始终置顶</span>
+                  <small>保持便签浮在其他窗口之上</small>
+                </span>
+                <input id="pinToggle" type="checkbox" checked />
+                <span class="switch" aria-hidden="true"><i></i></span>
+              </label>
+
+              <label class="setting-row toggle-row startup-row" for="launchAtLoginToggle">
+                <span class="setting-copy">
+                  <span class="setting-label">开机自启动</span>
+                  <small id="launchAtLoginHint" aria-live="polite">登录 Windows 后自动打开</small>
+                </span>
+                <input id="launchAtLoginToggle" type="checkbox" aria-describedby="launchAtLoginHint" disabled />
+                <span class="switch" aria-hidden="true"><i></i></span>
+              </label>
+            </section>
+
+            <section id="settingsAbout" class="settings-section">
+              <div class="setting-block about-block">
+                <span class="setting-label">关于</span>
+                <strong>桌面便签 0.3.17</strong>
+                <p>待办与图文暂存工作区。内容只保存在本机，不会上传。</p>
+              </div>
+            </section>
+        </div>
+      </section>
+
+      <section id="schedulePanel" class="overlay-panel schedule-panel" aria-label="设置时间" hidden>
+        <header class="overlay-header">
+          <strong>设置时间</strong>
+          <button class="overlay-close" type="button" data-close-panel aria-label="关闭时间设置">×</button>
+        </header>
+
+        <div class="schedule-content">
+          <div class="mode-tabs" role="tablist" aria-label="时间精度">
+            <button type="button" data-schedule-mode="datetime">具体时间</button>
+            <button type="button" data-schedule-mode="date">仅日期</button>
+            <button type="button" data-schedule-mode="none">不设置</button>
+          </div>
+
+          <div id="datetimeField" class="schedule-field">
+            <div class="datetime-inputs">
+              <label>
+                <span>日期</span>
+                <input id="datetimeDateInput" type="date" />
+              </label>
+              <label>
+                <span>时间</span>
+                <input
+                  id="timeTextInput"
+                  class="direct-time-input"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="5"
+                  placeholder="14:44"
+                  autocomplete="off"
+                  spellcheck="false"
+                  aria-describedby="timeInputHint"
+                />
+              </label>
+            </div>
+            <small id="timeInputHint">直接输入 1444 或 14:44</small>
+          </div>
+          <label id="dateField" class="schedule-field" hidden>
+            <span>选择日期</span>
+            <input id="dateInput" type="date" />
+          </label>
+          <p id="noneField" class="none-field" hidden>该待办不显示时间，可随时再次添加。</p>
+
+          <footer class="schedule-actions">
+            <button type="button" data-close-panel>取消</button>
+            <button id="saveSchedule" class="primary-action" type="button">保存</button>
+          </footer>
+        </div>
+      </section>
+
+      <div id="dropOverlay" class="drop-overlay" hidden>
+        <span aria-hidden="true">＋</span>
+        <strong>松开即可暂存图片</strong>
+      </div>
+
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+      <template id="itemTemplate">
+        <article class="item-row">
+          <button class="reorder-handle" type="button" draggable="true" aria-label="拖动调整优先级" title="拖动排序；Alt+↑/↓ 也可移动">
+            <span aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          </button>
+          <textarea class="item-editor" rows="1" maxlength="1000" placeholder="输入待办…"></textarea>
+          <button class="schedule-button" type="button" aria-label="设置时间" title="设置时间">
+            <span class="time-main"></span>
+          </button>
+          <button class="delete-button" type="button" aria-label="删除待办" title="删除待办">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7" /></svg>
+            <span class="delete-confirm" aria-hidden="true">!</span>
+          </button>
+        </article>
+      </template>
+
+      <template id="stagingItemTemplate">
+        <article class="staging-row">
+          <button class="reorder-handle staging-reorder" type="button" draggable="true" aria-label="拖动调整暂存顺序" title="拖动排序；Alt+↑/↓ 也可移动">
+            <span aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          </button>
+          <button class="staging-visual" type="button" aria-label="预览图片">
+            <img class="staging-thumbnail" alt="" />
+            <span class="staging-text-mark" aria-hidden="true">T</span>
+          </button>
+          <div class="staging-content">
+            <strong class="staging-image-name"></strong>
+            <textarea class="staging-text-editor" rows="1" maxlength="5000" placeholder="输入暂存文字…"></textarea>
+            <small class="staging-meta"></small>
+          </div>
+          <div class="staging-side">
+            <time class="staging-time"></time>
+            <div class="staging-actions">
+              <button class="staging-copy" type="button" aria-label="复制暂存项" title="复制">
+                <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.2" y="3" width="7.4" height="8.2" rx="1.3" /><path d="M10.5 13H4.6A1.6 1.6 0 0 1 3 11.4V6" /></svg>
+              </button>
+              <button class="staging-save" type="button" aria-label="另存图片" title="另存图片">
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7m0 0 2.8-2.8M8 9.5 5.2 6.7M3 12v1h10v-1" /></svg>
+              </button>
+              <button class="staging-delete" type="button" aria-label="删除暂存项" title="删除暂存项">
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5 5 6 6m0-6-6 6" /></svg>
+                <span aria-hidden="true">!</span>
+              </button>
+            </div>
+          </div>
+        </article>
+      </template>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

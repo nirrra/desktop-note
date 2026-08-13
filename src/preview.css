@@ -1,0 +1,290 @@
+:root {
+  color-scheme: dark;
+  --viewer: rgba(18, 20, 24, 0.94);
+  --viewer-strong: rgba(10, 12, 16, 0.98);
+  --text: #f4f6f7;
+  --soft: #9ea6ae;
+  --line: rgba(255, 255, 255, 0.1);
+  --accent: #8eb4ff;
+  --font: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI Variable Text", "DengXian", sans-serif;
+  --number-font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+button { font: inherit; }
+
+.preview-shell {
+  position: absolute;
+  inset: 7px;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr) 40px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 42px),
+    var(--viewer);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 24px 56px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(34px) saturate(128%);
+  animation: preview-in 170ms cubic-bezier(.2, .78, .24, 1) both;
+}
+
+.preview-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 0 15px;
+  border-bottom: 1px solid var(--line);
+  cursor: grab;
+  -webkit-app-region: drag;
+}
+
+.preview-header:active { cursor: grabbing; }
+
+.preview-title-group {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.preview-title-group strong {
+  overflow: hidden;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-title-group small {
+  flex: 0 0 auto;
+  color: var(--soft);
+  font-size: 9px;
+  font-weight: 560;
+  letter-spacing: 0.04em;
+}
+
+.icon-button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--soft);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.icon-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.icon-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
+.preview-stage {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 10px;
+  place-items: center;
+  background-color: var(--viewer-strong);
+  background-image:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%);
+  background-position: 0 0, 0 8px;
+  background-size: 16px 16px;
+}
+
+.preview-stage img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  opacity: 0;
+  object-fit: contain;
+  transition: opacity 150ms ease;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+body.is-loaded .preview-stage img { opacity: 1; }
+
+#previewText {
+  display: none;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 420;
+  line-height: 1.6;
+  letter-spacing: 0.012em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+body[data-kind="text"] .preview-stage {
+  place-items: stretch;
+  background-image: none;
+}
+
+body[data-kind="text"] .preview-stage img,
+body[data-kind="text"] .preview-loading {
+  display: none;
+}
+
+body[data-kind="text"] #previewText {
+  display: block;
+}
+
+html[data-mode="hover"] .preview-header,
+html[data-mode="hover"] .preview-footer {
+  display: none;
+}
+
+html[data-mode="hover"] .preview-shell {
+  inset: 0;
+  grid-template-rows: minmax(0, 1fr);
+  border-radius: 14px;
+  animation: preview-in 120ms cubic-bezier(.2, .78, .24, 1) both;
+}
+
+html[data-mode="hover"] .preview-stage {
+  padding: 12px 13px;
+}
+
+html[data-mode="hover"] #previewText {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.preview-loading {
+  position: absolute;
+  display: flex;
+  gap: 4px;
+  color: var(--soft);
+}
+
+.preview-loading span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: loading 800ms ease-in-out infinite alternate;
+}
+
+.preview-loading span:nth-child(2) { animation-delay: 120ms; }
+.preview-loading span:nth-child(3) { animation-delay: 240ms; }
+body.is-loaded .preview-loading { display: none; }
+
+.preview-footer {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px 0 15px;
+  border-top: 1px solid var(--line);
+}
+
+.preview-meta {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--soft);
+  font-family: var(--number-font);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-status {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.preview-footer button {
+  flex: 0 0 auto;
+  height: 25px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--soft);
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.preview-footer button:hover {
+  border-color: rgba(142, 180, 255, 0.55);
+  color: var(--text);
+}
+
+.preview-footer .primary-button {
+  border-color: transparent;
+  background: var(--accent);
+  color: #0d172a;
+  font-weight: 650;
+  box-shadow: 0 4px 12px rgba(142, 180, 255, 0.22);
+}
+
+.preview-footer button:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+@keyframes preview-in {
+  from { opacity: 0; transform: scale(0.975) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes loading {
+  from { opacity: 0.28; transform: translateY(1px); }
+  to { opacity: 0.9; transform: translateY(-1px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

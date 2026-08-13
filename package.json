@@ -1,0 +1,50 @@
+{
+  "name": "desktop-note",
+  "version": "0.3.17",
+  "description": "支持待办与图文暂存工作区的透明桌面便签。",
+  "main": "main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "check": "node --check main.js && node --check preload.js && node --check src/app.js && node --check src/preview-preload.cjs && node --check src/preview.js && node --check src/staging-store.cjs && node tests/staging-store.mjs && node tests/smoke.mjs",
+    "dist": "electron-builder --win portable zip"
+  },
+  "build": {
+    "appId": "com.desktopnote.widget",
+    "productName": "桌面便签",
+    "artifactName": "桌面便签-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    }
+  },
+  "devDependencies": {
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3"
+  }
+}

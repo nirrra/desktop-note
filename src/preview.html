@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src staging-image:; connect-src 'none'; object-src 'none'; base-uri 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>图片预览</title>
+    <link rel="stylesheet" href="preview.css" />
+  </head>
+  <body>
+    <main class="preview-shell">
+      <header class="preview-header">
+        <span class="preview-title-group">
+          <strong id="previewTitle">图片预览</strong>
+          <small>完整预览</small>
+        </span>
+        <button id="closePreview" class="icon-button" type="button" aria-label="关闭预览" title="关闭 (Esc)">
+          <svg viewBox="0 0 18 18" aria-hidden="true"><path d="m5 5 8 8m0-8-8 8" /></svg>
+        </button>
+      </header>
+
+      <section class="preview-stage">
+        <img id="previewImage" alt="暂存图片完整预览" />
+        <pre id="previewText"></pre>
+        <div id="previewLoading" class="preview-loading"><span></span><span></span><span></span></div>
+      </section>
+
+      <footer class="preview-footer">
+        <span id="previewMeta" class="preview-meta"></span>
+        <span id="previewStatus" class="preview-status" role="status" aria-live="polite"></span>
+        <button id="copyPreview" type="button">复制</button>
+        <button id="savePreview" class="primary-button" type="button">下载 / 另存</button>
+      </footer>
+    </main>
+    <script src="preview.js"></script>
+  </body>
+</html>

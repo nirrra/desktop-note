@@ -1,0 +1,10 @@
+node_modules/
+.pnpm-store/
+.electron-cache/
+.electron-builder-cache/
+release/
+release-out/
+qa-output/
+*.log
+.DS_Store
+Thumbs.db
