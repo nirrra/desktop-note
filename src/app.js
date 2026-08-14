@@ -1,11 +1,18 @@
 const STORAGE_KEY = 'desktop-notes:v3';
 const V2_STORAGE_KEY = 'sprout-notes:v2';
 const V1_STORAGE_KEY = 'sprout-deskbar:v1';
-const THEMES = ['ivory', 'obsidian', 'smoke', 'classic'];
+const THEMES = ['gray', 'paper', 'graphite', 'glass', 'editorial', 'wabi'];
+const THEME_ALIASES = {
+  ivory: 'gray',
+  obsidian: 'graphite',
+  smoke: 'glass',
+  classic: 'paper',
+};
+const EDITORIAL_THEMES = new Set(['editorial', 'wabi']);
 const SCHEDULE_MODES = ['datetime', 'date', 'none'];
 const MAX_ITEMS = 100;
 const MAX_BODY_LENGTH = 1000;
-const EDITOR_MIN_HEIGHT = 20;
+const EDITOR_MIN_HEIGHT = 22;
 const EDITOR_MAX_HEIGHT = 40;
 const STAGING_EDITOR_MIN_HEIGHT = 18;
 const STAGING_EDITOR_MAX_HEIGHT = 36;
@@ -16,8 +23,8 @@ const bridge = window.desktopNotes ?? {
     dockedEdge: null,
     pinned: true,
     shortcutRegistered: false,
-    size: { width: 330, height: 230 },
-    sizeLimits: { minWidth: 280, maxWidth: 600, minHeight: 180, maxHeight: 500 },
+    size: { width: 420, height: 480 },
+    sizeLimits: { minWidth: 320, maxWidth: 640, minHeight: 280, maxHeight: 640 },
   }),
   setPinned: async (pinned) => ({ dockedEdge: null, pinned }),
   setWindowSize: async (size) => ({ dockedEdge: null, pinned: true, size }),
@@ -46,9 +53,14 @@ const bridge = window.desktopNotes ?? {
 };
 
 const DEFAULT_APPEARANCE = {
-  theme: 'obsidian',
-  opacity: 88,
+  theme: 'gray',
+  opacity: 92,
 };
+
+function resolveTheme(theme) {
+  const mapped = THEME_ALIASES[theme] ?? theme;
+  return THEMES.includes(mapped) ? mapped : DEFAULT_APPEARANCE.theme;
+}
 
 function createId() {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -81,6 +93,7 @@ function normalizeItem(item, index) {
     schedule: normalizeSchedule(item.schedule),
     createdAt,
     updatedAt: Number.isFinite(item.updatedAt) ? item.updatedAt : createdAt,
+    done: Boolean(item.done),
   };
 }
 
@@ -98,7 +111,7 @@ function loadState() {
     return {
       items: saved.items.map(normalizeItem).filter(Boolean).slice(0, MAX_ITEMS),
       appearance: {
-        theme: THEMES.includes(saved.appearance?.theme) ? saved.appearance.theme : DEFAULT_APPEARANCE.theme,
+        theme: resolveTheme(saved.appearance?.theme),
         opacity: clamp(saved.appearance?.opacity, 50, 100, DEFAULT_APPEARANCE.opacity),
       },
       workspace: saved.workspace === 'staging' ? 'staging' : 'items',
@@ -139,8 +152,8 @@ let windowState = {
   edgePreviewed: false,
   pinned: true,
   shortcutRegistered: false,
-  size: { width: 330, height: 230 },
-  sizeLimits: { minWidth: 280, maxWidth: 600, minHeight: 180, maxHeight: 500 },
+    size: { width: 420, height: 480 },
+    sizeLimits: { minWidth: 320, maxWidth: 640, minHeight: 280, maxHeight: 640 },
 };
 let activeScheduleItemId = null;
 let activeScheduleMode = 'datetime';
@@ -187,9 +200,11 @@ const elements = {
   clearStaging: document.querySelector('#clearStaging'),
   settingsButton: document.querySelector('#settingsButton'),
   settingsPanel: document.querySelector('#settingsPanel'),
-  itemsFooterCount: document.querySelector('#itemsFooterCount'),
   settingsContent: document.querySelector('.settings-content'),
   hideButton: document.querySelector('#hideButton'),
+  pinButton: document.querySelector('#pinButton'),
+  closeButton: document.querySelector('#closeButton'),
+  itemComposerInput: document.querySelector('#itemComposerInput'),
   edgeHandle: document.querySelector('#edgeHandle'),
   themeChoices: [...document.querySelectorAll('[data-theme-choice]')],
   opacityInput: document.querySelector('#opacityInput'),
@@ -220,6 +235,7 @@ function saveState() {
 
 function applyAppearance() {
   elements.app.dataset.theme = state.appearance.theme;
+  elements.app.dataset.layout = EDITORIAL_THEMES.has(state.appearance.theme) ? 'editorial' : 'compact';
   elements.app.style.setProperty('--panel-alpha', (state.appearance.opacity / 100).toFixed(2));
   elements.opacityInput.value = String(state.appearance.opacity);
   elements.opacityValue.value = `${state.appearance.opacity}%`;
@@ -232,16 +248,17 @@ function applyAppearance() {
 }
 
 function formatHeaderDate(date = new Date()) {
-  const year = String(date.getFullYear()).padStart(4, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}/${month}/${day}`;
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${weekdays[date.getDay()]}`;
 }
 
 function updateHeaderDate(date = new Date()) {
   const displayDate = formatHeaderDate(date);
   elements.todayDate.textContent = displayDate;
-  elements.todayDate.dateTime = displayDate.replaceAll('/', '-');
+  const year = String(date.getFullYear()).padStart(4, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  elements.todayDate.dateTime = `${year}-${month}-${day}`;
   return displayDate;
 }
 
@@ -356,16 +373,17 @@ function markTimeInputError() {
   elements.timeTextInput.select();
 }
 
-function formatSchedule(schedule) {
+function formatSchedule(schedule, now = new Date()) {
   if (schedule.mode === 'datetime' && schedule.value) {
     const [, timePart = ''] = schedule.value.split('T');
-    return { main: timePart.slice(0, 5) };
+    return { main: timePart.slice(0, 5), kind: 'time' };
   }
   if (schedule.mode === 'date' && schedule.value) {
-    const [, month, day] = schedule.value.split('-');
-    return { main: `${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}` };
+    const [year, month, day] = schedule.value.split('-').map(Number);
+    const isToday = year === now.getFullYear() && month === now.getMonth() + 1 && day === now.getDate();
+    return { main: isToday ? '今天' : `${month}月${day}日`, kind: 'date' };
   }
-  return { main: '' };
+  return { main: '', kind: 'none' };
 }
 
 function fitEditorHeight(editor) {
@@ -393,15 +411,37 @@ function formatStagingTime(timestamp) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+function formatBytes(bytes) {
+  const size = Math.max(0, Number(bytes) || 0);
+  if (size < 1024) return `${size}B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(size < 10 * 1024 ? 1 : 0)}KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function formatRelativeTime(timestamp, now = Date.now()) {
+  const delta = Math.max(0, now - Number(timestamp || now));
+  if (delta < 60_000) return '刚刚';
+  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}分钟前`;
+  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}小时前`;
+  const date = new Date(timestamp);
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
 function formatStagingMeta(item) {
-  return `${item.width} × ${item.height} · ${item.format}`;
+  const relative = formatRelativeTime(item.createdAt);
+  if (item.type === 'image') return `${item.format} · ${formatBytes(item.bytes)} · ${relative}`;
+  return `文字 · ${Array.from(item.text ?? '').length}字 · ${relative}`;
+}
+
+function formatStagingTag(item) {
+  if (item.type !== 'image') return '文字';
+  return /截图|screenshot/i.test(item.name ?? '') ? '截图' : '图片';
 }
 
 function updateWorkspaceTabs() {
   const stagingCount = stagingState.items.length;
   elements.itemCount.textContent = String(state.items.length);
   elements.stagingCount.textContent = String(stagingCount);
-  elements.itemsFooterCount.textContent = `共 ${state.items.length} 条便签`;
   elements.itemsTab.setAttribute('aria-label', `待办 ${state.items.length} 条`);
   elements.stagingTab.setAttribute('aria-label', `暂存 ${stagingCount} 项`);
   elements.stagingEmpty.hidden = stagingCount !== 0;
@@ -534,6 +574,19 @@ function clearDropMarkers() {
   }
 }
 
+function setItemDone(itemId, done) {
+  const current = state.items.find((candidate) => candidate.id === itemId);
+  if (!current || Boolean(current.done) === Boolean(done)) return false;
+  current.done = Boolean(done);
+  current.updatedAt = Date.now();
+  const open = state.items.filter((item) => !item.done);
+  const closed = state.items.filter((item) => item.done);
+  state.items = [...open, ...closed];
+  saveState();
+  renderItems();
+  return true;
+}
+
 function deleteItem(itemId) {
   clearTimeout(deleteConfirmTimers.get(itemId));
   deleteConfirmTimers.delete(itemId);
@@ -550,6 +603,7 @@ function buildItemRow(item) {
   const fragment = elements.itemTemplate.content.cloneNode(true);
   const row = fragment.querySelector('.item-row');
   const handle = fragment.querySelector('.reorder-handle');
+  const doneInput = fragment.querySelector('.item-done');
   const editor = fragment.querySelector('.item-editor');
   const scheduleButton = fragment.querySelector('.schedule-button');
   const timeMain = fragment.querySelector('.time-main');
@@ -557,11 +611,15 @@ function buildItemRow(item) {
   const time = formatSchedule(item.schedule);
 
   row.dataset.itemId = item.id;
+  row.classList.toggle('is-done', Boolean(item.done));
+  doneInput.checked = Boolean(item.done);
+  doneInput.setAttribute('aria-label', item.done ? `标记未完成：${item.body.slice(0, 24) || '空白待办'}` : `标记完成：${item.body.slice(0, 24) || '空白待办'}`);
   editor.value = item.body;
   editor.setAttribute('aria-label', `编辑待办：${item.body.slice(0, 24) || '空白待办'}`);
   timeMain.textContent = time.main;
   scheduleButton.dataset.mode = item.schedule.mode;
   scheduleButton.classList.toggle('has-time', item.schedule.mode !== 'none');
+  scheduleButton.classList.toggle('is-date', time.kind === 'date');
   scheduleButton.setAttribute('aria-label', item.schedule.mode === 'none' ? '设置时间' : `修改时间：${time.main}`);
   scheduleButton.title = item.schedule.mode === 'none' ? '设置时间' : `修改时间：${time.main}`;
 
@@ -575,6 +633,10 @@ function buildItemRow(item) {
   });
   editor.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') createItem();
+  });
+  doneInput.addEventListener('click', (event) => event.stopPropagation());
+  doneInput.addEventListener('change', () => {
+    setItemDone(item.id, doneInput.checked);
   });
 
   scheduleButton.addEventListener('click', () => openSchedule(item.id));
@@ -776,16 +838,17 @@ function buildStagingItemRow(item) {
   const thumbnail = fragment.querySelector('.staging-thumbnail');
   const imageName = fragment.querySelector('.staging-image-name');
   const textEditor = fragment.querySelector('.staging-text-editor');
+  const tag = fragment.querySelector('.staging-tag');
   const meta = fragment.querySelector('.staging-meta');
-  const time = fragment.querySelector('.staging-time');
   const copyButton = fragment.querySelector('.staging-copy');
   const saveButton = fragment.querySelector('.staging-save');
+  const previewButton = fragment.querySelector('.staging-preview');
   const deleteButton = fragment.querySelector('.staging-delete');
 
   row.dataset.stagingId = item.id;
   row.dataset.kind = item.type;
-  time.textContent = formatStagingTime(item.createdAt);
-  time.dateTime = new Date(item.createdAt).toISOString();
+  tag.textContent = formatStagingTag(item);
+  meta.textContent = formatStagingMeta(item);
   handle.setAttribute('aria-label', `拖动调整暂存顺序：${item.type === 'text' ? item.text.slice(0, 20) : item.name}`);
   visual.setAttribute(
     'aria-label',
@@ -822,6 +885,7 @@ function buildStagingItemRow(item) {
   }
 
   copyButton.addEventListener('click', () => void copyStaging(item.id));
+  previewButton.addEventListener('click', () => void openStagingItemPreview(item.id));
   saveButton.addEventListener('click', () => void saveStagingImage(item.id));
   deleteButton.addEventListener('click', () => {
     if (deleteButton.classList.contains('is-confirming')) {
@@ -836,6 +900,19 @@ function buildStagingItemRow(item) {
     }, 1900));
   });
 
+  visual.draggable = true;
+  visual.addEventListener('dragstart', (event) => {
+    draggedStagingItemId = item.id;
+    row.classList.add('is-dragging');
+    void bridge.hideStagingHover();
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', item.id);
+  });
+  visual.addEventListener('dragend', () => {
+    draggedStagingItemId = null;
+    row.classList.remove('is-dragging');
+    clearDropMarkers();
+  });
   handle.addEventListener('dragstart', (event) => {
     draggedStagingItemId = item.id;
     row.classList.add('is-dragging');
@@ -991,6 +1068,7 @@ function createItem(body = '', schedule = { mode: 'none', value: '' }) {
     id: createId(),
     body: String(body).slice(0, MAX_BODY_LENGTH),
     schedule: normalizeSchedule(schedule),
+    done: false,
     createdAt: now,
     updatedAt: now,
   };
@@ -1001,8 +1079,9 @@ function createItem(body = '', schedule = { mode: 'none', value: '' }) {
 }
 
 function setTheme(theme) {
-  if (!THEMES.includes(theme)) return false;
-  state.appearance.theme = theme;
+  const resolved = resolveTheme(theme);
+  if (!THEMES.includes(resolved)) return false;
+  state.appearance.theme = resolved;
   saveState();
   applyAppearance();
   return true;
@@ -1041,6 +1120,8 @@ function applyWindowState(nextState) {
   elements.app.classList.toggle('is-edge-hidden', hiddenAtEdge);
   elements.app.classList.toggle('is-edge-preview', previewed);
   elements.pinToggle.checked = windowState.pinned;
+  elements.pinButton.classList.toggle('is-pinned', Boolean(windowState.pinned));
+  elements.pinButton.setAttribute('aria-pressed', String(Boolean(windowState.pinned)));
   if (windowState.size) {
     elements.widthInput.value = String(windowState.size.width);
     elements.heightInput.value = String(windowState.size.height);
@@ -1073,7 +1154,23 @@ function hideDropOverlay() {
 }
 
 function bindEvents() {
-  elements.addItem.addEventListener('click', () => createItem());
+  elements.addItem.addEventListener('click', () => {
+    const body = elements.itemComposerInput.value.trim();
+    if (body) {
+      createItem(body);
+      elements.itemComposerInput.value = '';
+      return;
+    }
+    elements.itemComposerInput.focus();
+  });
+  elements.itemComposerInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    const body = elements.itemComposerInput.value.trim();
+    if (!body) return;
+    createItem(body);
+    elements.itemComposerInput.value = '';
+  });
   elements.addStaging.addEventListener('click', () => void chooseStagingImages());
   elements.itemsTab.addEventListener('click', () => {
     closePanels();
@@ -1087,6 +1184,10 @@ function bindEvents() {
   elements.clearStaging.addEventListener('click', () => void clearAllStaging());
   elements.settingsButton.addEventListener('click', openSettings);
   elements.hideButton.addEventListener('click', hideToTray);
+  elements.closeButton.addEventListener('click', hideToTray);
+  elements.pinButton.addEventListener('click', async () => {
+    applyWindowState(await bridge.setPinned(!windowState.pinned));
+  });
   elements.edgeHandle.addEventListener('click', async () => applyWindowState(await bridge.restoreFromEdge()));
   for (const closeButton of elements.closePanelButtons) closeButton.addEventListener('click', closePanels);
 
@@ -1097,8 +1198,8 @@ function bindEvents() {
   elements.applySize.addEventListener('click', async () => {
     const limits = windowState.sizeLimits;
     const requested = {
-      width: clamp(elements.widthInput.value, limits.minWidth, limits.maxWidth, 330),
-      height: clamp(elements.heightInput.value, limits.minHeight, limits.maxHeight, 230),
+      width: clamp(elements.widthInput.value, limits.minWidth, limits.maxWidth, 420),
+      height: clamp(elements.heightInput.value, limits.minHeight, limits.maxHeight, 480),
     };
     applyWindowState(await bridge.setWindowSize(requested));
     showToast(`尺寸已调整为 ${windowState.size.width} × ${windowState.size.height}`);
@@ -1200,7 +1301,10 @@ function bindEvents() {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') {
       event.preventDefault();
       if (state.workspace === 'staging') void createStagingText();
-      else createItem();
+      else {
+        setActiveWorkspace('items');
+        elements.itemComposerInput.focus();
+      }
     }
   });
   document.addEventListener('visibilitychange', () => {
@@ -1219,7 +1323,7 @@ function bindEvents() {
   bridge.onCreateItemRequested(() => {
     closePanels();
     setActiveWorkspace('items');
-    createItem();
+    elements.itemComposerInput.focus();
   });
 }
 
@@ -1293,10 +1397,10 @@ window.__desktopQa = {
     const sampleHeaderDate = new Date(2026, 7, 12, 23, 59, 0);
     const sampleHeaderDisplay = updateHeaderDate(sampleHeaderDate);
     const headerDateStyles = getComputedStyle(elements.todayDate);
-    const headerDateWorks = sampleHeaderDisplay === '2026/08/12'
-      && elements.todayDate.textContent === '2026/08/12'
+    const headerDateWorks = sampleHeaderDisplay === '8月12日 周三'
+      && elements.todayDate.textContent === '8月12日 周三'
       && elements.todayDate.dateTime === '2026-08-12'
-      && headerDateStyles.fontSize === '14px'
+      && headerDateStyles.fontSize === '13px'
       && Number.parseFloat(headerDateStyles.fontSize) < 17
       && headerDateStyles.fontVariantNumeric.includes('tabular-nums');
     const headerDecorationRemoved = !document.querySelector('.drag-mark')
@@ -1333,7 +1437,7 @@ window.__desktopQa = {
       && migrated.items[0].body === '旧版正文'
       && migrated.items[0].schedule.mode === 'none';
 
-    state = { items: [], appearance: { theme: 'obsidian', opacity: 88 }, workspace: 'items' };
+    state = { items: [], appearance: { theme: 'graphite', opacity: 88 }, workspace: 'items' };
     for (let index = 0; index < 8; index += 1) {
       createItem(`待办 ${index + 1}`);
     }
@@ -1346,7 +1450,7 @@ window.__desktopQa = {
     const oneLineEditors = [...document.querySelectorAll('.item-editor')];
     const typographyImproved = oneLineEditors.every((editor) => {
       const styles = getComputedStyle(editor);
-      return styles.fontSize === '12.5px' && styles.fontFamily.includes('Microsoft YaHei UI');
+      return styles.fontSize === '13px' && styles.fontFamily.includes('Microsoft YaHei UI');
     });
     const singleLineCentered = oneLineEditors.every((editor) => {
       const editorRect = editor.getBoundingClientRect();
@@ -1417,18 +1521,16 @@ window.__desktopQa = {
       exactButton?.dataset.mode === 'datetime'
       && exactButton.querySelector('.time-main')?.textContent === '14:44'
       && dateButton?.dataset.mode === 'date'
-      && dateButton.querySelector('.time-main')?.textContent === '08/21'
+      && dateButton.querySelector('.time-main')?.textContent === '8月21日'
       && emptyButton?.dataset.mode === 'none'
       && emptyButton.querySelector('.time-main')?.textContent === ''
       && !exactButton.querySelector('.schedule-icon')
       && !exactButton.querySelector('.time-sub')
-      && exactStyles?.backgroundColor === 'rgba(0, 0, 0, 0)'
       && exactStyles?.borderTopWidth === '0px'
-      && exactStyles?.boxShadow === 'none'
-      && exactTextStyles?.fontSize === '12px'
+      && exactTextStyles?.fontSize === '11px'
       && emptyHintStyles?.content.includes('设置时间')
-      && Number(emptyRect?.width) >= 56
-      && Number(emptyRect?.height) >= 34
+      && Number(emptyRect?.width) >= 48
+      && Number(emptyRect?.height) >= 20
       && invisibleTimeClickable,
     );
 
@@ -1639,7 +1741,7 @@ window.__desktopQa = {
   openSettingsSection(section) {
     showSettingsSection(section);
   },
-  openDirectTimePanel(theme = 'obsidian') {
+  openDirectTimePanel(theme = 'graphite') {
     setActiveWorkspace('items', { persist: false });
     setTheme(theme);
     const item = state.items.find((candidate) => candidate.schedule.mode === 'datetime') ?? state.items[0];
@@ -1647,7 +1749,7 @@ window.__desktopQa = {
     openSchedule(item.id);
     return true;
   },
-  openStagingShowcase(theme = 'ivory') {
+  openStagingShowcase(theme = 'gray') {
     closePanels();
     setTheme(theme);
     setActiveWorkspace('staging', { persist: false });

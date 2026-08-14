@@ -1,19 +1,19 @@
 # 桌面便签
 
-一块默认 **330×230**、轻量透明的 Windows 桌面便签。待办与图文暂存共用同一窗口，内容只保存在本机，完全离线。
+一块默认 **420×480**、轻量透明的 Windows 桌面便签。待办与图文暂存共用同一窗口，内容只保存在本机，完全离线。
 
 ## 下载
 
 到 [GitHub Releases](https://github.com/nirrra/desktop-note/releases/latest) 下载最新版：
 
-- **推荐** [`desktop-note-0.3.18-x64.zip`](https://github.com/nirrra/desktop-note/releases/download/v0.3.18/desktop-note-0.3.18-x64.zip)：解压一次后双击 `桌面便签.exe`，后续启动更快
-- 或 [`desktop-note-0.3.18-x64.exe`](https://github.com/nirrra/desktop-note/releases/download/v0.3.18/desktop-note-0.3.18-x64.exe)：单文件便携版，无需解压，但每次启动会慢一些
+- **推荐** [`desktop-note-0.3.20-x64.zip`](https://github.com/nirrra/desktop-note/releases/download/v0.3.20/desktop-note-0.3.20-x64.zip)：解压一次后双击 `桌面便签.exe`，后续启动更快
+- 或 [`desktop-note-0.3.20-x64.exe`](https://github.com/nirrra/desktop-note/releases/download/v0.3.20/desktop-note-0.3.20-x64.exe)：单文件便携版，无需解压，但每次启动会慢一些
 
 可用同目录的 `SHA256SUMS.txt` 校验完整性。当前构建没有商业代码签名，Windows 首次运行可能提示“未知发布者”，属预期现象。
 
 ## 已实现
 
-- 素白、黑曜、烟灰、经典黄四款皮肤，布局一致；可调窗口透明度和大小
+- 中性灰、暖白纸、石墨、雾面、编辑、侘寂六款皮肤；可调窗口透明度和大小
 - 待办就地编辑、自动保存；空待办单击删除，有内容的待办需二次确认
 - 列表底部固定「新建待办 / 上传图片」；也支持 `Ctrl + N`
 - 拖动手柄排序，或 `Alt + ↑/↓`

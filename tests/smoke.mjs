@@ -23,7 +23,7 @@ const previewRenderer = read('src/preview.js');
 const previewPreload = read('src/preview-preload.cjs');
 
 assert.equal(packageJson.main, 'main.js');
-assert.equal(packageJson.version, '0.3.18');
+assert.equal(packageJson.version, '0.3.20');
 assert.equal(packageJson.build.productName, '桌面便签');
 assert.equal(packageJson.build.artifactName, 'desktop-note-${version}-${arch}.${ext}');
 assert.ok(packageJson.build.win.target.some((target) => target.target === 'portable'));
@@ -38,7 +38,7 @@ for (const requiredFile of [
   assert.ok(fs.existsSync(path.join(root, requiredFile)), `${requiredFile} should exist`);
 }
 
-assert.match(main, /DEFAULT_SIZE\s*=\s*\{\s*width:\s*330,\s*height:\s*230\s*\}/);
+assert.match(main, /DEFAULT_SIZE\s*=\s*\{\s*width:\s*420,\s*height:\s*480\s*\}/);
 assert.match(main, /contextIsolation:\s*true/);
 assert.match(main, /function guardGuiOutputStream/);
 assert.match(main, /guardGuiOutputStream\(process\.stdout\)/);
@@ -143,7 +143,7 @@ for (const requiredId of [
   assert.match(html, new RegExp(`id="${requiredId}"`));
 }
 
-for (const theme of ['ivory', 'obsidian', 'smoke', 'classic']) {
+for (const theme of ['gray', 'paper', 'graphite', 'glass', 'editorial', 'wabi']) {
   assert.match(html, new RegExp(`data-theme-choice="${theme}"`));
   assert.match(css, new RegExp(`data-theme="${theme}"`));
 }
@@ -154,7 +154,7 @@ assert.match(html, /id="itemsWorkspace"[^>]*aria-label="待办工作区"/);
 assert.match(html, /id="addItem"[^>]*aria-label="新建待办"/);
 assert.doesNotMatch(html, /drag-mark|事项/);
 assert.doesNotMatch(css, /\.drag-mark/);
-assert.match(html, /<time id="todayDate" datetime="2026-08-12">2026\/08\/12<\/time>/);
+assert.match(html, /<time id="todayDate" datetime="2026-08-12">8月12日 周三<\/time>/);
 assert.doesNotMatch(html, /<strong>便签<\/strong>/);
 assert.match(html, /class="schedule-button"/);
 assert.match(html, /class="time-main"/);
@@ -172,18 +172,24 @@ assert.match(html, /img-src 'self' data: staging-image:/);
 assert.match(html, /class="reorder-handle staging-reorder"[^>]*draggable="true"/);
 assert.match(html, /class="staging-thumbnail"/);
 assert.match(html, /class="staging-text-editor"/);
-assert.match(html, /Ctrl\+V 粘贴/);
+assert.match(html, /id="pinButton"/);
+assert.match(html, /id="closeButton"/);
+assert.match(html, /id="itemComposerInput"/);
+assert.match(html, /class="item-done"/);
+assert.match(renderer, /function setItemDone/);
+assert.match(html, /class="staging-preview"/);
+assert.match(html, /Ctrl\+V/);
 assert.doesNotMatch(html, /imagePreviewPanel|imagePreview/);
 
 assert.match(css, /--font:\s*"Microsoft YaHei UI"/);
 assert.match(css, /--number-font:\s*"Segoe UI Variable Text"/);
-assert.match(css, /\.drag-surface > time[\s\S]*font-size:\s*14px[\s\S]*font-variant-numeric:\s*tabular-nums/);
+assert.match(css, /\.drag-surface > time[\s\S]*font-size:\s*13px[\s\S]*font-variant-numeric:\s*tabular-nums/);
 assert.match(css, /\.items-list[\s\S]*overflow-y:\s*auto/);
-assert.match(css, /\.item-row[\s\S]*grid-template-columns:\s*20px minmax\(0,\s*1fr\) 58px 16px/);
+assert.match(css, /\.item-row[\s\S]*grid-template-columns:\s*18px 18px minmax\(0,\s*1fr\) auto 22px/);
 assert.match(css, /\.item-editor[\s\S]*align-self:\s*center/);
-assert.match(css, /\.item-editor[\s\S]*font-size:\s*12\.5px/);
-assert.match(css, /\.schedule-button[\s\S]*width:\s*58px[\s\S]*border:\s*0[\s\S]*background:\s*transparent[\s\S]*box-shadow:\s*none/);
-assert.match(css, /\.time-main[\s\S]*font-size:\s*12px/);
+assert.match(css, /\.item-editor[\s\S]*font-size:\s*13px/);
+assert.match(css, /\.schedule-button[\s\S]*min-width:\s*52px[\s\S]*border:\s*0[\s\S]*border-radius:\s*0/);
+assert.match(css, /\.time-main[\s\S]*font-size:\s*11px/);
 assert.match(css, /\.schedule-button:not\(\.has-time\)::after[\s\S]*content:\s*"设置时间"/);
 assert.match(css, /\.datetime-inputs[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) 78px/);
 assert.match(css, /\.direct-time-input[\s\S]*font-variant-numeric:\s*tabular-nums/);
@@ -196,8 +202,13 @@ assert.match(css, /\.app\[data-edge="left"\] \.edge-handle\s*\{[^}]*border-left:
 assert.match(css, /\.app\[data-edge="right"\] \.edge-handle\s*\{[^}]*border-right:\s*0;[^}]*border-radius:\s*9px 0 0 9px;/);
 assert.match(css, /\.app\[data-edge="top"\] \.edge-handle\s*\{[^}]*border-top:\s*0;[^}]*border-radius:\s*0 0 9px 9px;/);
 assert.match(css, /\.app\[data-edge="bottom"\] \.edge-handle\s*\{[^}]*border-bottom:\s*0;[^}]*border-radius:\s*9px 9px 0 0;/);
-assert.match(css, /\.app\[data-theme="classic"\][\s\S]*--panel-rgb:\s*249,\s*247,\s*220/);
-assert.match(css, /data-theme-choice="classic"[^\n]*#f9f7dc/);
+assert.match(css, /\.app\[data-theme="paper"\][\s\S]*--panel-rgb:\s*251,\s*248,\s*242/);
+assert.match(css, /data-theme-choice="paper"[^\n]*#fbf8f2/);
+assert.match(css, /\.app\[data-theme="graphite"\][\s\S]*--panel-rgb:\s*28,\s*30,\s*35/);
+assert.match(css, /\.app\[data-layout="editorial"\] \.workspace-tab\.is-active::after/);
+assert.match(html, /class="composer-hint"/);
+assert.match(html, /class="icon-x"/);
+assert.match(renderer, /THEME_ALIASES/);
 assert.match(css, /prefers-reduced-motion/);
 assert.match(css, /\.title-bar[\s\S]*grid-template-columns:\s*minmax\(88px,\s*1fr\) auto auto/);
 assert.match(css, /\.title-bar[\s\S]*-webkit-app-region:\s*drag/);
@@ -209,10 +220,10 @@ assert.match(css, /\.toggle-row input:checked \+ \.switch i/);
 assert.match(css, /\.overlay-panel\s*\{[\s\S]*overflow:\s*clip/);
 assert.match(css, /\.settings-content\s*\{[\s\S]*overscroll-behavior-y:\s*contain/);
 assert.match(css, /\.workspace-tab\.is-active::after[\s\S]*opacity:\s*1/);
-assert.match(css, /\.staging-workspace[\s\S]*grid-template-rows:\s*minmax\(0,\s*1fr\) 30px 22px/);
-assert.match(css, /#itemsWorkspace[\s\S]*grid-template-rows:\s*minmax\(0,\s*1fr\) 30px 20px/);
+assert.match(css, /\.staging-workspace[\s\S]*grid-template-rows:\s*minmax\(0,\s*1fr\) 48px/);
+assert.match(css, /#itemsWorkspace[\s\S]*grid-template-rows:\s*minmax\(0,\s*1fr\) 44px/);
 assert.match(css, /\.list-composer/);
-assert.match(css, /\.staging-row[\s\S]*grid-template-columns:\s*18px 40px minmax\(0,\s*1fr\) 49px/);
+assert.match(css, /\.staging-row[\s\S]*grid-template-columns:\s*0 40px minmax\(0,\s*1fr\) auto/);
 assert.match(css, /\.staging-list[\s\S]*overflow-y:\s*auto/);
 assert.doesNotMatch(css, /\.image-preview-panel/);
 assert.match(css, /\.drop-overlay/);
@@ -338,4 +349,4 @@ assert.match(css, /\.app\.is-edge-hidden \.widget-shell[\s\S]*visibility:\s*hidd
 assert.match(css, /\.app\.is-edge-preview \.widget-shell[\s\S]*visibility:\s*visible/);
 assert.doesNotMatch(renderer, /\.innerHTML\s*=/, 'Renderer should not inject HTML strings');
 
-console.log('V3 smoke checks passed: todos, sortable staging, side hover preview, floating preview, context actions, four skins, sizing, and edge hiding are present.');
+console.log('V3 smoke checks passed: todos, sortable staging, side hover preview, floating preview, context actions, six skins, sizing, and edge hiding are present.');

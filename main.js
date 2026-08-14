@@ -30,12 +30,12 @@ guardGuiOutputStream(process.stderr);
 
 const APP_NAME = '桌面便签';
 const SHORTCUT = 'CommandOrControl+Shift+Space';
-const DEFAULT_SIZE = { width: 330, height: 230 };
+const DEFAULT_SIZE = { width: 420, height: 480 };
 const SIZE_LIMITS = {
-  minWidth: 280,
-  maxWidth: 600,
-  minHeight: 180,
-  maxHeight: 500,
+  minWidth: 320,
+  maxWidth: 640,
+  minHeight: 280,
+  maxHeight: 640,
 };
 const EDGE_THRESHOLD = 30;
 const EDGE_REVEAL = 26;
@@ -362,7 +362,9 @@ async function saveStagingImage(id, ownerWindow = mainWindow) {
   try {
     const store = getStagingStore();
     const item = await store.getItem(String(id));
-    if (!item || item.type !== 'image') return { ok: false, error: '暂存图片不存在' };
+    if (!item) return { ok: false, error: '暂存项不存在' };
+    if (item.type === 'text') return saveStagingText(id, ownerWindow);
+    if (item.type !== 'image') return { ok: false, error: '暂存图片不存在' };
     const sourcePath = await store.getImagePath(item.id, 'original');
     if (qaOutputDirectory) {
       const destination = path.join(qaOutputDirectory, `saved-${item.suggestedName}`);
@@ -988,8 +990,8 @@ function readWindowState() {
     // V2 only stored bounds from its larger 430×520 window. Treat an explicit
     // `size` field as the V3 opt-in so upgrades start at the new compact size.
     currentSize = saved.size ? clampSize(saved.size) : { ...DEFAULT_SIZE };
-    if (currentSize.width === 300) currentSize = { ...currentSize, width: DEFAULT_SIZE.width };
-    if (currentSize.height === 200) currentSize = { ...currentSize, height: DEFAULT_SIZE.height };
+    if (currentSize.width === 300 || currentSize.width === 330) currentSize = { ...currentSize, width: DEFAULT_SIZE.width };
+    if (currentSize.height === 200 || currentSize.height === 230) currentSize = { ...currentSize, height: DEFAULT_SIZE.height };
     persistedNormalBounds = saved.normalBounds ?? saved.bounds ?? null;
   } catch {
     isPinned = true;
@@ -1724,21 +1726,25 @@ async function runVisualQa(outputDirectory) {
 
     const layoutSignatures = [];
     const opacityRanges = [];
-    for (const [index, theme] of ['ivory', 'obsidian', 'smoke', 'classic'].entries()) {
+    for (const theme of ['gray', 'paper', 'graphite', 'glass', 'editorial', 'wabi']) {
       const signature = await mainWindow.webContents.executeJavaScript(
         `window.__desktopQa.setThemeAndMeasure('${theme}', 84)`,
       );
       layoutSignatures.push(signature);
       await delay(180);
-      await captureWindow(path.join(qaDirectory, `0${index + 1}-theme-${theme}.png`));
+      await captureWindow(path.join(qaDirectory, `theme-${theme}.png`));
       opacityRanges.push(await mainWindow.webContents.executeJavaScript(
         `window.__desktopQa.measureOpacityRange('${theme}')`,
       ));
     }
-    const firstLayout = JSON.stringify(layoutSignatures[0].metrics);
-    const layoutsIdentical = layoutSignatures.every((entry) => JSON.stringify(entry.metrics) === firstLayout);
+    const compactLayout = JSON.stringify(layoutSignatures.find((entry) => entry.theme === 'gray')?.metrics);
+    const editorialLayout = JSON.stringify(layoutSignatures.find((entry) => entry.theme === 'editorial')?.metrics);
+    const layoutsIdentical = layoutSignatures.every((entry) => {
+      const expected = ['editorial', 'wabi'].includes(entry.theme) ? editorialLayout : compactLayout;
+      return JSON.stringify(entry.metrics) === expected;
+    });
     const stagingLayoutSignatures = [];
-    for (const theme of ['ivory', 'obsidian', 'smoke', 'classic']) {
+    for (const theme of ['gray', 'paper', 'graphite', 'glass', 'editorial', 'wabi']) {
       stagingLayoutSignatures.push(await mainWindow.webContents.executeJavaScript(
         `window.__desktopQa.measureStagingLayout('${theme}')`,
       ));
@@ -1752,12 +1758,12 @@ async function runVisualQa(outputDirectory) {
       && Math.abs(sample.surfaceAlpha - sample.opacity / 100) < 0.011
     )));
 
-    await mainWindow.webContents.executeJavaScript("window.__desktopQa.openDirectTimePanel('obsidian')");
+    await mainWindow.webContents.executeJavaScript("window.__desktopQa.openDirectTimePanel('graphite')");
     await delay(180);
     await captureWindow(path.join(qaDirectory, '05-direct-time-input.png'));
     await mainWindow.webContents.executeJavaScript('window.__desktopQa.closePanels()');
 
-    await mainWindow.webContents.executeJavaScript("window.__desktopQa.openSettings('obsidian')");
+    await mainWindow.webContents.executeJavaScript("window.__desktopQa.openSettings('graphite')");
     await delay(180);
     await captureWindow(path.join(qaDirectory, '06-settings.png'));
     const launchAtLoginSettingVisible = await mainWindow.webContents.executeJavaScript(`
@@ -1823,7 +1829,7 @@ async function runVisualQa(outputDirectory) {
       }))()
     `);
     await mainWindow.webContents.executeJavaScript('window.__desktopQa.closePanels()');
-    await mainWindow.webContents.executeJavaScript("window.__desktopQa.openSettings('obsidian')");
+    await mainWindow.webContents.executeJavaScript("window.__desktopQa.openSettings('graphite')");
     await delay(180);
     const settingsReopenedState = await mainWindow.webContents.executeJavaScript(`
       (() => {
@@ -1852,7 +1858,7 @@ async function runVisualQa(outputDirectory) {
     await mainWindow.webContents.executeJavaScript('window.__desktopQa.closePanels()');
 
     const stagingShowcaseCount = await mainWindow.webContents.executeJavaScript(
-      "window.__desktopQa.openStagingShowcase('ivory')",
+      "window.__desktopQa.openStagingShowcase('gray')",
     );
     await delay(260);
     const stagingVisualState = await mainWindow.webContents.executeJavaScript(`
@@ -1942,8 +1948,8 @@ async function runVisualQa(outputDirectory) {
     const floatingPreviewVisible = rendererOpenedFloatingPreview
       && previewWindow.isVisible()
       && previewWindow.isAlwaysOnTop()
-      && floatingPreviewBounds.width > DEFAULT_SIZE.width
-      && floatingPreviewBounds.height > DEFAULT_SIZE.height
+      && floatingPreviewBounds.width >= PREVIEW_MIN_WIDTH
+      && floatingPreviewBounds.height > PREVIEW_MIN_HEIGHT
       && floatingPreviewInsideWorkArea
       && floatingPreviewState.loaded
       && floatingPreviewState.source.startsWith('staging-image://item/')
@@ -1958,7 +1964,7 @@ async function runVisualQa(outputDirectory) {
     closeStagingPreviewWindow();
     await delay(100);
 
-    await mainWindow.webContents.executeJavaScript("window.__desktopQa.openStagingShowcase('ivory')");
+    await mainWindow.webContents.executeJavaScript("window.__desktopQa.openStagingShowcase('gray')");
     const hoverText = await getStagingStore().createText(Array.from(
       { length: 16 },
       (_, index) => `第 ${index + 1} 段：登录页交互说明，覆盖按钮状态、错误提示和跳转。`,
@@ -1988,7 +1994,7 @@ async function runVisualQa(outputDirectory) {
       && hoverShowResult.itemType === 'text'
       && (!previewWindow || previewWindow.isDestroyed())
       && hoverPreviewWindow.isVisible()
-      && hoverPreviewBounds.height > DEFAULT_SIZE.height
+      && hoverPreviewBounds.height > PREVIEW_MIN_HEIGHT
       && (hoverTouchesLeft || hoverTouchesRight)
       && hoverPreviewState.mode === 'hover'
       && hoverPreviewState.kind === 'text'
@@ -2002,7 +2008,7 @@ async function runVisualQa(outputDirectory) {
     await getStagingStore().remove(hoverText.id);
     await delay(80);
     await mainWindow.webContents.executeJavaScript('window.__desktopQa.closePanels()');
-    await mainWindow.webContents.executeJavaScript("window.__desktopQa.setThemeAndMeasure('obsidian', 84)");
+    await mainWindow.webContents.executeJavaScript("window.__desktopQa.setThemeAndMeasure('graphite', 84)");
 
     const resizedState = setWindowSize({ width: 360, height: 240 });
     await delay(260);
@@ -2103,9 +2109,9 @@ async function runVisualQa(outputDirectory) {
       previewFromEdge();
       await delay(180);
       const overlayAction = [
-        "window.__desktopQa.openSettings('obsidian')",
-        "window.__desktopQa.openDirectTimePanel('obsidian')",
-        "window.__desktopQa.openStagingShowcase('obsidian'); window.__desktopQa.openStagingPreview()",
+        "window.__desktopQa.openSettings('graphite')",
+        "window.__desktopQa.openDirectTimePanel('graphite')",
+        "window.__desktopQa.openStagingShowcase('graphite'); window.__desktopQa.openStagingPreview()",
       ][cycle % 3];
       await mainWindow.webContents.executeJavaScript(overlayAction);
       await delay(60);
