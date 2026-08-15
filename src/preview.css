@@ -177,6 +177,52 @@ body[data-kind="text"] #previewText {
   display: block;
 }
 
+.preview-file {
+  display: none;
+  min-width: 0;
+  padding: 6px 4px;
+}
+
+.preview-file strong {
+  display: block;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-file small {
+  display: block;
+  margin-top: 6px;
+  color: var(--soft);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.preview-file p {
+  margin: 8px 0 0;
+  color: var(--soft);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+body[data-kind="file"] .preview-stage {
+  place-items: stretch;
+  background-image: none;
+}
+
+body[data-kind="file"] .preview-stage img,
+body[data-kind="file"] .preview-loading,
+body[data-kind="file"] #previewText {
+  display: none;
+}
+
+body[data-kind="file"] .preview-file {
+  display: block;
+}
+
 html[data-mode="hover"] .preview-header,
 html[data-mode="hover"] .preview-footer {
   display: none;

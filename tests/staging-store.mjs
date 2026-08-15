@@ -61,8 +61,27 @@ try {
   assert.equal((await reloaded.getItem(text.id)).text, '已编辑文字');
 
   const originalPath = await reloaded.getImagePath(image.id, 'original');
+  const thumbnailPath = await reloaded.getImagePath(image.id, 'thumbnail');
   await reloaded.remove(image.id);
   assert.equal(fs.existsSync(originalPath), false);
+  assert.equal(fs.existsSync(thumbnailPath), false);
+
+  const sourceFile = path.join(temporaryRoot, 'notes.pdf');
+  await fs.promises.writeFile(sourceFile, 'dummy-pdf');
+  const fileItem = await reloaded.importLocalFile(sourceFile);
+  assert.equal(fileItem.type, 'file');
+  assert.equal(fileItem.exists, true);
+  assert.equal(fileItem.name, 'notes.pdf');
+  await reloaded.remove(fileItem.id);
+  assert.equal(fs.existsSync(sourceFile), true);
+  assert.equal((await reloaded.list()).some((item) => item.id === fileItem.id), false);
+
+  const leftover = path.join(temporaryRoot, 'originals', 'orphan.png');
+  await fs.promises.writeFile(leftover, png);
+  const imageAgain = await reloaded.importImageBuffer(png, { name: '再删.png' });
+  await reloaded.remove(imageAgain.id);
+  assert.equal(fs.existsSync(leftover), false);
+
   assert.equal(await reloaded.clear(), 1);
   assert.deepEqual(await reloaded.list(), []);
 } finally {

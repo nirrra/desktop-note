@@ -9,7 +9,7 @@ const THEME_ALIASES = {
   classic: 'paper',
 };
 const EDITORIAL_THEMES = new Set(['editorial', 'wabi']);
-const SCHEDULE_MODES = ['datetime', 'date', 'none'];
+const SCHEDULE_MODES = ['datetime', 'date', 'time', 'none'];
 const MAX_ITEMS = 100;
 const MAX_BODY_LENGTH = 1000;
 const EDITOR_MIN_HEIGHT = 22;
@@ -23,7 +23,7 @@ const bridge = window.desktopNotes ?? {
     dockedEdge: null,
     pinned: true,
     shortcutRegistered: false,
-    size: { width: 420, height: 480 },
+    size: { width: 420, height: 340 },
     sizeLimits: { minWidth: 320, maxWidth: 640, minHeight: 280, maxHeight: 640 },
   }),
   setPinned: async (pinned) => ({ dockedEdge: null, pinned }),
@@ -39,6 +39,9 @@ const bridge = window.desktopNotes ?? {
   deleteStagingItem: async () => ({ ok: false, error: '暂存功能不可用' }),
   clearStaging: async () => ({ ok: false, error: '暂存功能不可用' }),
   importStagingFiles: async () => ({ ok: false, error: '暂存功能不可用' }),
+  importStagingPaths: async () => ({ ok: false, error: '暂存功能不可用' }),
+  getPathForFile: () => '',
+  openStagingFile: async () => ({ ok: false, error: '暂存功能不可用' }),
   chooseStagingImages: async () => ({ ok: false, error: '暂存功能不可用' }),
   pasteToStaging: async () => ({ ok: false, error: '暂存功能不可用' }),
   copyStagingItem: async () => ({ ok: false, error: '暂存功能不可用' }),
@@ -52,14 +55,33 @@ const bridge = window.desktopNotes ?? {
   onCreateItemRequested: () => () => {},
 };
 
+const FONT_SIZE_MIN = 12;
+const FONT_SIZE_MAX = 20;
 const DEFAULT_APPEARANCE = {
   theme: 'gray',
   opacity: 92,
+  fontSize: 13,
 };
 
 function resolveTheme(theme) {
   const mapped = THEME_ALIASES[theme] ?? theme;
   return THEMES.includes(mapped) ? mapped : DEFAULT_APPEARANCE.theme;
+}
+
+function normalizeAppearance(appearance) {
+  return {
+    theme: resolveTheme(appearance?.theme),
+    opacity: clamp(appearance?.opacity, 50, 100, DEFAULT_APPEARANCE.opacity),
+    fontSize: clamp(appearance?.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX, DEFAULT_APPEARANCE.fontSize),
+  };
+}
+
+function currentFontSize() {
+  return clamp(state.appearance?.fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX, DEFAULT_APPEARANCE.fontSize);
+}
+
+function scaledSize(base) {
+  return Math.round(base * currentFontSize() / DEFAULT_APPEARANCE.fontSize);
 }
 
 function createId() {
@@ -79,6 +101,9 @@ function normalizeSchedule(schedule) {
     return { mode, value: schedule.value };
   }
   if (mode === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(schedule?.value ?? '')) {
+    return { mode, value: schedule.value };
+  }
+  if (mode === 'time' && /^\d{2}:\d{2}$/.test(schedule?.value ?? '')) {
     return { mode, value: schedule.value };
   }
   return { mode: 'none', value: '' };
@@ -110,10 +135,7 @@ function loadState() {
   if (saved && Array.isArray(saved.items)) {
     return {
       items: saved.items.map(normalizeItem).filter(Boolean).slice(0, MAX_ITEMS),
-      appearance: {
-        theme: resolveTheme(saved.appearance?.theme),
-        opacity: clamp(saved.appearance?.opacity, 50, 100, DEFAULT_APPEARANCE.opacity),
-      },
+      appearance: normalizeAppearance(saved.appearance),
       workspace: saved.workspace === 'staging' ? 'staging' : 'items',
     };
   }
@@ -152,11 +174,11 @@ let windowState = {
   edgePreviewed: false,
   pinned: true,
   shortcutRegistered: false,
-    size: { width: 420, height: 480 },
+    size: { width: 420, height: 340 },
     sizeLimits: { minWidth: 320, maxWidth: 640, minHeight: 280, maxHeight: 640 },
 };
 let activeScheduleItemId = null;
-let activeScheduleMode = 'datetime';
+let calendarView = { year: new Date().getFullYear(), month: new Date().getMonth() };
 let draggedItemId = null;
 let draggedStagingItemId = null;
 let stagingDragDepth = 0;
@@ -209,6 +231,8 @@ const elements = {
   themeChoices: [...document.querySelectorAll('[data-theme-choice]')],
   opacityInput: document.querySelector('#opacityInput'),
   opacityValue: document.querySelector('#opacityValue'),
+  fontSizeInput: document.querySelector('#fontSizeInput'),
+  fontSizeValue: document.querySelector('#fontSizeValue'),
   widthInput: document.querySelector('#widthInput'),
   heightInput: document.querySelector('#heightInput'),
   applySize: document.querySelector('#applySize'),
@@ -217,13 +241,20 @@ const elements = {
   launchAtLoginHint: document.querySelector('#launchAtLoginHint'),
   schedulePanel: document.querySelector('#schedulePanel'),
   dropOverlay: document.querySelector('#dropOverlay'),
-  modeButtons: [...document.querySelectorAll('[data-schedule-mode]')],
-  datetimeField: document.querySelector('#datetimeField'),
-  dateField: document.querySelector('#dateField'),
-  noneField: document.querySelector('#noneField'),
   datetimeDateInput: document.querySelector('#datetimeDateInput'),
+  datePickerButton: document.querySelector('#datePickerButton'),
+  datePickerLabel: document.querySelector('#datePickerLabel'),
+  datePickerPanel: document.querySelector('#datePickerPanel'),
+  datePickerMonth: document.querySelector('#datePickerMonth'),
+  datePickerDays: document.querySelector('#datePickerDays'),
+  datePickerPrev: document.querySelector('#datePickerPrev'),
+  datePickerNext: document.querySelector('#datePickerNext'),
+  clearDate: document.querySelector('#clearDate'),
   timeTextInput: document.querySelector('#timeTextInput'),
-  dateInput: document.querySelector('#dateInput'),
+  timePickerPanel: document.querySelector('#timePickerPanel'),
+  timeHourList: document.querySelector('#timeHourList'),
+  timeMinuteList: document.querySelector('#timeMinuteList'),
+  clearTime: document.querySelector('#clearTime'),
   saveSchedule: document.querySelector('#saveSchedule'),
   closePanelButtons: [...document.querySelectorAll('[data-close-panel]')],
   toast: document.querySelector('#toast'),
@@ -234,17 +265,25 @@ function saveState() {
 }
 
 function applyAppearance() {
+  const fontSize = currentFontSize();
+  state.appearance.fontSize = fontSize;
   elements.app.dataset.theme = state.appearance.theme;
   elements.app.dataset.layout = EDITORIAL_THEMES.has(state.appearance.theme) ? 'editorial' : 'compact';
   elements.app.style.setProperty('--panel-alpha', (state.appearance.opacity / 100).toFixed(2));
+  elements.app.style.setProperty('--font-size', `${fontSize}px`);
   elements.opacityInput.value = String(state.appearance.opacity);
   elements.opacityValue.value = `${state.appearance.opacity}%`;
   elements.opacityValue.textContent = `${state.appearance.opacity}%`;
+  elements.fontSizeInput.value = String(fontSize);
+  elements.fontSizeValue.value = `${fontSize}px`;
+  elements.fontSizeValue.textContent = `${fontSize}px`;
   for (const choice of elements.themeChoices) {
     const active = choice.dataset.themeChoice === state.appearance.theme;
     choice.classList.toggle('is-active', active);
     choice.setAttribute('aria-checked', String(active));
   }
+  for (const editor of document.querySelectorAll('.item-editor')) fitEditorHeight(editor);
+  for (const editor of document.querySelectorAll('.staging-text-editor')) fitStagingEditorHeight(editor);
 }
 
 function formatHeaderDate(date = new Date()) {
@@ -343,6 +382,26 @@ async function updateLaunchAtLogin(enabled) {
   return launchAtLoginState;
 }
 
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function todayIsoDate(now = new Date()) {
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+}
+
+function formatPickerDate(iso) {
+  if (!iso) return '不设置';
+  const [year, month, day] = iso.split('-');
+  return `${year}/${month}/${day}`;
+}
+
+function parseIsoDate(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso ?? '')) return null;
+  const [year, month, day] = iso.split('-').map(Number);
+  return { year, month: month - 1, day };
+}
+
 function normalizeDirectTime(value) {
   const input = String(value ?? '').trim().replace(/[：.]/g, ':');
   let hour;
@@ -358,7 +417,7 @@ function normalizeDirectTime(value) {
   const hours = Number(hour);
   const minutes = Number(minute);
   if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours > 23 || minutes > 59) return null;
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  return `${pad2(hours)}:${pad2(minutes)}`;
 }
 
 function clearTimeInputError() {
@@ -378,6 +437,9 @@ function formatSchedule(schedule, now = new Date()) {
     const [, timePart = ''] = schedule.value.split('T');
     return { main: timePart.slice(0, 5), kind: 'time' };
   }
+  if (schedule.mode === 'time' && schedule.value) {
+    return { main: schedule.value, kind: 'time' };
+  }
   if (schedule.mode === 'date' && schedule.value) {
     const [year, month, day] = schedule.value.split('-').map(Number);
     const isToday = year === now.getFullYear() && month === now.getMonth() + 1 && day === now.getDate();
@@ -387,22 +449,23 @@ function formatSchedule(schedule, now = new Date()) {
 }
 
 function fitEditorHeight(editor) {
-  editor.style.height = `${EDITOR_MIN_HEIGHT}px`;
+  const minHeight = scaledSize(EDITOR_MIN_HEIGHT);
+  const maxHeight = scaledSize(EDITOR_MAX_HEIGHT);
+  editor.style.height = `${minHeight}px`;
   const requiredHeight = editor.scrollHeight;
-  const nextHeight = Math.min(Math.max(requiredHeight, EDITOR_MIN_HEIGHT), EDITOR_MAX_HEIGHT);
+  const nextHeight = Math.min(Math.max(requiredHeight, minHeight), maxHeight);
   editor.style.height = `${nextHeight}px`;
-  editor.classList.toggle('is-scrollable', requiredHeight > EDITOR_MAX_HEIGHT);
+  editor.classList.toggle('is-scrollable', requiredHeight > maxHeight);
 }
 
 function fitStagingEditorHeight(editor) {
-  editor.style.height = `${STAGING_EDITOR_MIN_HEIGHT}px`;
+  const minHeight = scaledSize(STAGING_EDITOR_MIN_HEIGHT);
+  const maxHeight = scaledSize(STAGING_EDITOR_MAX_HEIGHT);
+  editor.style.height = `${minHeight}px`;
   const requiredHeight = editor.scrollHeight;
-  const nextHeight = Math.min(
-    Math.max(requiredHeight, STAGING_EDITOR_MIN_HEIGHT),
-    STAGING_EDITOR_MAX_HEIGHT,
-  );
+  const nextHeight = Math.min(Math.max(requiredHeight, minHeight), maxHeight);
   editor.style.height = `${nextHeight}px`;
-  editor.classList.toggle('is-scrollable', requiredHeight > STAGING_EDITOR_MAX_HEIGHT);
+  editor.classList.toggle('is-scrollable', requiredHeight > maxHeight);
 }
 
 function formatStagingTime(timestamp) {
@@ -430,10 +493,15 @@ function formatRelativeTime(timestamp, now = Date.now()) {
 function formatStagingMeta(item) {
   const relative = formatRelativeTime(item.createdAt);
   if (item.type === 'image') return `${item.format} · ${formatBytes(item.bytes)} · ${relative}`;
+  if (item.type === 'file') {
+    const kind = (item.extension || '文件').replace(/^\./, '').toUpperCase() || '文件';
+    return `${item.exists === false ? '已丢失 · ' : ''}${kind} · ${formatBytes(item.bytes)} · ${relative}`;
+  }
   return `文字 · ${Array.from(item.text ?? '').length}字 · ${relative}`;
 }
 
 function formatStagingTag(item) {
+  if (item.type === 'file') return item.exists === false ? '丢失' : '文件';
   if (item.type !== 'image') return '文字';
   return /截图|screenshot/i.test(item.name ?? '') ? '截图' : '图片';
 }
@@ -466,7 +534,7 @@ function setActiveWorkspace(workspace, { persist = true } = {}) {
 function applyStagingSnapshot(result) {
   if (!result?.ok || !Array.isArray(result.items)) return false;
   stagingState = {
-    items: result.items.filter((item) => item && ['text', 'image'].includes(item.type)),
+    items: result.items.filter((item) => item && ['text', 'image', 'file'].includes(item.type)),
     loaded: true,
     limits: { ...stagingState.limits, ...(result.limits ?? {}) },
   };
@@ -488,6 +556,7 @@ function updateItemCount() {
 
 function closePanels({ closePreview = true } = {}) {
   resetSettingsScroll();
+  closeSchedulePickers();
   elements.settingsPanel.hidden = true;
   elements.schedulePanel.hidden = true;
   elements.dropOverlay.hidden = true;
@@ -511,21 +580,120 @@ function showSettingsSection(section) {
   element?.scrollIntoView({ block: 'start' });
 }
 
-function setScheduleMode(mode) {
-  const previousMode = activeScheduleMode;
-  activeScheduleMode = SCHEDULE_MODES.includes(mode) ? mode : 'none';
-  if (activeScheduleMode === 'datetime' && previousMode === 'date' && !elements.datetimeDateInput.value) {
-    elements.datetimeDateInput.value = elements.dateInput.value;
+function closeSchedulePickers() {
+  const dateOpen = !elements.datePickerPanel.hidden;
+  const timeOpen = !elements.timePickerPanel.hidden;
+  elements.datePickerPanel.hidden = true;
+  elements.timePickerPanel.hidden = true;
+  elements.datePickerButton.setAttribute('aria-expanded', 'false');
+  return dateOpen || timeOpen;
+}
+
+function syncDatePicker() {
+  const value = elements.datetimeDateInput.value;
+  const empty = !value;
+  elements.datePickerLabel.textContent = formatPickerDate(value);
+  elements.datePickerButton.classList.toggle('is-empty', empty);
+  elements.datePickerButton.setAttribute('aria-label', empty ? '日期，不设置' : `日期，${formatPickerDate(value)}`);
+}
+
+function renderDatePicker() {
+  elements.datePickerMonth.textContent = `${calendarView.year}年${calendarView.month + 1}月`;
+  const days = elements.datePickerDays;
+  while (days.firstChild) days.removeChild(days.firstChild);
+  const firstWeekday = new Date(calendarView.year, calendarView.month, 1).getDay();
+  const daysInMonth = new Date(calendarView.year, calendarView.month + 1, 0).getDate();
+  const selected = elements.datetimeDateInput.value;
+  const today = todayIsoDate();
+  for (let index = 0; index < firstWeekday; index += 1) {
+    const spacer = document.createElement('span');
+    spacer.className = 'calendar-spacer';
+    days.append(spacer);
   }
-  if (activeScheduleMode === 'date' && previousMode === 'datetime' && !elements.dateInput.value) {
-    elements.dateInput.value = elements.datetimeDateInput.value;
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const iso = `${calendarView.year}-${pad2(calendarView.month + 1)}-${pad2(day)}`;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'calendar-day';
+    button.textContent = String(day);
+    if (iso === selected) button.classList.add('is-selected');
+    if (iso === today) button.classList.add('is-today');
+    button.addEventListener('click', () => {
+      elements.datetimeDateInput.value = iso;
+      syncDatePicker();
+      closeSchedulePickers();
+    });
+    days.append(button);
   }
-  for (const button of elements.modeButtons) {
-    button.classList.toggle('is-active', button.dataset.scheduleMode === activeScheduleMode);
+}
+
+function openDatePicker() {
+  elements.timePickerPanel.hidden = true;
+  const parsed = parseIsoDate(elements.datetimeDateInput.value) ?? parseIsoDate(todayIsoDate());
+  calendarView = { year: parsed.year, month: parsed.month };
+  renderDatePicker();
+  elements.datePickerPanel.hidden = false;
+  elements.datePickerButton.setAttribute('aria-expanded', 'true');
+}
+
+function currentTimeParts() {
+  const normalized = normalizeDirectTime(elements.timeTextInput.value);
+  if (!normalized) return { hour: null, minute: null };
+  const [hour, minute] = normalized.split(':').map(Number);
+  return { hour, minute };
+}
+
+function highlightTimePicker() {
+  const { hour, minute } = currentTimeParts();
+  for (const button of elements.timeHourList.children) {
+    button.classList.toggle('is-selected', Number(button.dataset.hour) === hour);
   }
-  elements.datetimeField.hidden = activeScheduleMode !== 'datetime';
-  elements.dateField.hidden = activeScheduleMode !== 'date';
-  elements.noneField.hidden = activeScheduleMode !== 'none';
+  for (const button of elements.timeMinuteList.children) {
+    button.classList.toggle('is-selected', Number(button.dataset.minute) === minute);
+  }
+}
+
+function selectTimePart(part, value) {
+  let { hour, minute } = currentTimeParts();
+  if (part === 'hour') hour = value;
+  else minute = value;
+  if (hour == null) hour = 0;
+  if (minute == null) minute = 0;
+  elements.timeTextInput.value = `${pad2(hour)}:${pad2(minute)}`;
+  clearTimeInputError();
+  highlightTimePicker();
+}
+
+function buildTimePickerColumns() {
+  if (elements.timeHourList.childElementCount) return;
+  for (let hour = 0; hour < 24; hour += 1) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.hour = String(hour);
+    button.textContent = pad2(hour);
+    button.addEventListener('click', () => selectTimePart('hour', hour));
+    elements.timeHourList.append(button);
+  }
+  for (let minute = 0; minute < 60; minute += 1) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.minute = String(minute);
+    button.textContent = pad2(minute);
+    button.addEventListener('click', () => selectTimePart('minute', minute));
+    elements.timeMinuteList.append(button);
+  }
+}
+
+function openTimePicker() {
+  elements.datePickerPanel.hidden = true;
+  elements.datePickerButton.setAttribute('aria-expanded', 'false');
+  buildTimePickerColumns();
+  highlightTimePicker();
+  elements.timePickerPanel.hidden = false;
+  requestAnimationFrame(() => {
+    elements.timeHourList.querySelector('.is-selected')?.scrollIntoView({ block: 'nearest' });
+    elements.timeMinuteList.querySelector('.is-selected')?.scrollIntoView({ block: 'nearest' });
+  });
 }
 
 function openSchedule(itemId) {
@@ -534,17 +702,21 @@ function openSchedule(itemId) {
   void bridge.closeStagingPreview();
   elements.settingsPanel.hidden = true;
   activeScheduleItemId = itemId;
-  activeScheduleMode = item.schedule.mode === 'none' ? 'datetime' : item.schedule.mode;
-  const [scheduledDate = '', scheduledTime = ''] = item.schedule.mode === 'datetime'
-    ? item.schedule.value.split('T')
-    : ['', ''];
-  elements.datetimeDateInput.value = scheduledDate || (item.schedule.mode === 'date' ? item.schedule.value : '');
+  let scheduledDate = '';
+  let scheduledTime = '';
+  if (item.schedule.mode === 'datetime') {
+    [scheduledDate = '', scheduledTime = ''] = item.schedule.value.split('T');
+  } else if (item.schedule.mode === 'date') {
+    scheduledDate = item.schedule.value;
+  } else if (item.schedule.mode === 'time') {
+    scheduledTime = item.schedule.value;
+  }
+  elements.datetimeDateInput.value = scheduledDate;
   elements.timeTextInput.value = scheduledTime.slice(0, 5);
-  elements.dateInput.value = item.schedule.mode === 'date' ? item.schedule.value : '';
   clearTimeInputError();
-  setScheduleMode(activeScheduleMode);
+  syncDatePicker();
+  closeSchedulePickers();
   elements.schedulePanel.hidden = false;
-  if (activeScheduleMode === 'datetime') requestAnimationFrame(() => elements.timeTextInput.focus());
 }
 
 function updateSchedule(itemId, schedule) {
@@ -751,7 +923,8 @@ async function copyStaging(itemId) {
 async function saveStagingImage(itemId) {
   const result = await bridge.saveStagingImage(itemId);
   if (result?.canceled) return false;
-  showToast(result?.ok ? '图片已保存' : (result?.error ?? '保存图片失败'));
+  const okMessage = result?.type === 'file' ? '文件副本已保存' : result?.type === 'text' ? '文字已保存' : '图片已保存';
+  showToast(result?.ok ? okMessage : (result?.error ?? '保存失败'));
   return Boolean(result?.ok);
 }
 
@@ -760,6 +933,12 @@ async function openStagingItemPreview(itemId) {
   if (!item) return false;
   void bridge.hideStagingHover();
   closePanels({ closePreview: false });
+  if (item.type === 'file') {
+    const result = await bridge.openStagingFile(item.id);
+    if (!result?.ok) showToast(result?.error ?? '无法打开文件');
+    else if (result.blocked) showToast('已在文件夹中显示，未直接运行该文件');
+    return Boolean(result?.ok);
+  }
   const result = await bridge.openStagingPreview(item.id);
   if (!result?.ok) showToast(result?.error ?? '无法打开预览');
   return Boolean(result?.ok);
@@ -784,7 +963,10 @@ async function openStagingContextMenu(itemId) {
     if (!result.canceled) showToast(result.ok ? '暂存内容已保存' : (result.error ?? '保存失败'));
     return Boolean(result.ok);
   }
-  if (result.action === 'preview' && !result.ok) showToast(result.error ?? '无法打开预览');
+  if (result.action === 'open' && result.blocked) showToast('已在文件夹中显示，未直接运行该文件');
+  if ((result.action === 'preview' || result.action === 'open' || result.action === 'reveal') && !result.ok) {
+    showToast(result.error ?? '无法打开文件');
+  }
   return Boolean(result.ok);
 }
 
@@ -852,7 +1034,11 @@ function buildStagingItemRow(item) {
   handle.setAttribute('aria-label', `拖动调整暂存顺序：${item.type === 'text' ? item.text.slice(0, 20) : item.name}`);
   visual.setAttribute(
     'aria-label',
-    item.type === 'image' ? `预览图片：${item.name}` : `预览文字：${item.text.slice(0, 24) || '空白内容'}`,
+    item.type === 'image'
+      ? `预览图片：${item.name}`
+      : item.type === 'file'
+        ? `打开文件：${item.name}`
+        : `预览文字：${item.text.slice(0, 24) || '空白内容'}`,
   );
   visual.addEventListener('pointerenter', () => {
     void bridge.showStagingHover(item.id, getElementLocalRect(visual));
@@ -869,6 +1055,12 @@ function buildStagingItemRow(item) {
     thumbnail.alt = '';
     imageName.textContent = item.name;
     meta.textContent = formatStagingMeta(item);
+  } else if (item.type === 'file') {
+    const mark = fragment.querySelector('.staging-text-mark');
+    const ext = (item.extension || '').replace(/^\./, '').slice(0, 4).toUpperCase() || 'FILE';
+    mark.textContent = ext;
+    imageName.textContent = item.name;
+    row.classList.toggle('is-missing', item.exists === false);
   } else {
     textEditor.value = item.text;
     textEditor.setAttribute('aria-label', `编辑暂存文字：${item.text.slice(0, 24) || '空白内容'}`);
@@ -1014,23 +1206,31 @@ async function pasteCurrentClipboard() {
 }
 
 async function importStagingFileObjects(fileList) {
-  const files = [...(fileList ?? [])]
-    .filter((file) => file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name))
-    .slice(0, 20);
+  const files = [...(fileList ?? [])].slice(0, 20);
   if (!files.length) {
-    showToast('请拖入 PNG、JPG、WebP、GIF 或 BMP 图片');
+    showToast('请拖入文件或图片');
     return false;
   }
+  const paths = [];
   const payloads = [];
   for (const file of files) {
-    try {
-      payloads.push({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
-    } catch {
-      showToast(`${file.name || '图片'} 读取失败`);
+    const filePath = bridge.getPathForFile?.(file) || file.path || '';
+    if (filePath) {
+      paths.push(filePath);
+      continue;
+    }
+    if (file.type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
+      try {
+        payloads.push({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
+      } catch {
+        showToast(`${file.name || '图片'} 读取失败`);
+      }
     }
   }
-  if (!payloads.length) return false;
-  return reportStagingImport(await bridge.importStagingFiles(payloads));
+  if (paths.length) return reportStagingImport(await bridge.importStagingPaths(paths));
+  if (payloads.length) return reportStagingImport(await bridge.importStagingFiles(payloads));
+  showToast('请拖入本地文件或图片');
+  return false;
 }
 
 async function clearAllStaging() {
@@ -1089,6 +1289,12 @@ function setTheme(theme) {
 
 function setOpacity(opacity) {
   state.appearance.opacity = clamp(opacity, 50, 100, DEFAULT_APPEARANCE.opacity);
+  saveState();
+  applyAppearance();
+}
+
+function setFontSize(fontSize) {
+  state.appearance.fontSize = clamp(fontSize, FONT_SIZE_MIN, FONT_SIZE_MAX, DEFAULT_APPEARANCE.fontSize);
   saveState();
   applyAppearance();
 }
@@ -1195,11 +1401,12 @@ function bindEvents() {
     choice.addEventListener('click', () => setTheme(choice.dataset.themeChoice));
   }
   elements.opacityInput.addEventListener('input', () => setOpacity(elements.opacityInput.value));
+  elements.fontSizeInput.addEventListener('input', () => setFontSize(elements.fontSizeInput.value));
   elements.applySize.addEventListener('click', async () => {
     const limits = windowState.sizeLimits;
     const requested = {
       width: clamp(elements.widthInput.value, limits.minWidth, limits.maxWidth, 420),
-      height: clamp(elements.heightInput.value, limits.minHeight, limits.maxHeight, 480),
+      height: clamp(elements.heightInput.value, limits.minHeight, limits.maxHeight, 340),
     };
     applyWindowState(await bridge.setWindowSize(requested));
     showToast(`尺寸已调整为 ${windowState.size.width} × ${windowState.size.height}`);
@@ -1214,18 +1421,39 @@ function bindEvents() {
     if (elements.settingsPanel.scrollTop !== 0) elements.settingsPanel.scrollTop = 0;
   });
 
-  for (const button of elements.modeButtons) {
-    button.addEventListener('click', () => setScheduleMode(button.dataset.scheduleMode));
-  }
+  elements.datePickerButton.addEventListener('click', () => {
+    if (elements.datePickerPanel.hidden) openDatePicker();
+    else closeSchedulePickers();
+  });
+  elements.datePickerPrev.addEventListener('click', () => {
+    calendarView = calendarView.month === 0
+      ? { year: calendarView.year - 1, month: 11 }
+      : { year: calendarView.year, month: calendarView.month - 1 };
+    renderDatePicker();
+  });
+  elements.datePickerNext.addEventListener('click', () => {
+    calendarView = calendarView.month === 11
+      ? { year: calendarView.year + 1, month: 0 }
+      : { year: calendarView.year, month: calendarView.month + 1 };
+    renderDatePicker();
+  });
+  elements.clearDate.addEventListener('click', () => {
+    elements.datetimeDateInput.value = '';
+    syncDatePicker();
+    closeSchedulePickers();
+  });
+  elements.timeTextInput.addEventListener('focus', openTimePicker);
   elements.timeTextInput.addEventListener('input', () => {
     const sanitized = elements.timeTextInput.value.replace(/[^\d:：.]/g, '').slice(0, 5);
     if (sanitized !== elements.timeTextInput.value) elements.timeTextInput.value = sanitized;
     clearTimeInputError();
+    highlightTimePicker();
   });
   elements.timeTextInput.addEventListener('blur', () => {
     if (!elements.timeTextInput.value) return;
     const normalized = normalizeDirectTime(elements.timeTextInput.value);
     if (normalized) elements.timeTextInput.value = normalized;
+    highlightTimePicker();
   });
   elements.timeTextInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
@@ -1233,32 +1461,33 @@ function bindEvents() {
       elements.saveSchedule.click();
     }
   });
+  elements.clearTime.addEventListener('click', () => {
+    elements.timeTextInput.value = '';
+    clearTimeInputError();
+    highlightTimePicker();
+    closeSchedulePickers();
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (elements.schedulePanel.hidden) return;
+    if (event.target.closest('.schedule-picker')) return;
+    closeSchedulePickers();
+  });
   elements.saveSchedule.addEventListener('click', () => {
     if (!activeScheduleItemId) return;
-    let value = '';
-    if (activeScheduleMode === 'datetime') {
-      const time = normalizeDirectTime(elements.timeTextInput.value);
-      if (!elements.datetimeDateInput.value) {
-        showToast('请先选择日期');
-        elements.datetimeDateInput.focus();
-        return;
-      }
-      if (!time) {
-        showToast('请输入有效时间，例如 14:44');
-        markTimeInputError();
-        return;
-      }
-      elements.timeTextInput.value = time;
-      value = `${elements.datetimeDateInput.value}T${time}`;
-    } else if (activeScheduleMode === 'date') {
-      value = elements.dateInput.value;
-      if (!value) {
-        showToast('请选择日期或改为“不设置”');
-        elements.dateInput.focus();
-        return;
-      }
+    const typed = elements.timeTextInput.value.trim();
+    const time = typed ? normalizeDirectTime(typed) : '';
+    if (typed && !time) {
+      showToast('请输入有效时间，例如 14:44');
+      markTimeInputError();
+      return;
     }
-    updateSchedule(activeScheduleItemId, { mode: activeScheduleMode, value });
+    if (time) elements.timeTextInput.value = time;
+    const date = elements.datetimeDateInput.value;
+    let schedule = { mode: 'none', value: '' };
+    if (date && time) schedule = { mode: 'datetime', value: `${date}T${time}` };
+    else if (date) schedule = { mode: 'date', value: date };
+    else if (time) schedule = { mode: 'time', value: time };
+    updateSchedule(activeScheduleItemId, schedule);
     closePanels();
   });
 
@@ -1297,7 +1526,10 @@ function bindEvents() {
   });
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closePanels();
+    if (event.key === 'Escape') {
+      if (closeSchedulePickers()) return;
+      closePanels();
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') {
       event.preventDefault();
       if (state.workspace === 'staging') void createStagingText();
@@ -1452,6 +1684,19 @@ window.__desktopQa = {
       const styles = getComputedStyle(editor);
       return styles.fontSize === '13px' && styles.fontFamily.includes('Microsoft YaHei UI');
     });
+    setFontSize(20);
+    const fontSizeLargeWorks = getComputedStyle(oneLineEditors[0]).fontSize === '20px'
+      && getComputedStyle(elements.todayDate).fontSize === '20px'
+      && Number.parseFloat(getComputedStyle(document.querySelector('.setting-label')).fontSize) > 16;
+    setFontSize(12);
+    const fontSizeSmallWorks = getComputedStyle(oneLineEditors[0]).fontSize === '12px';
+    setFontSize(13);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const fontSizeAdjustWorks = fontSizeLargeWorks
+      && fontSizeSmallWorks
+      && getComputedStyle(oneLineEditors[0]).fontSize === '13px'
+      && elements.fontSizeInput.min === '12'
+      && elements.fontSizeInput.max === '20';
     const singleLineCentered = oneLineEditors.every((editor) => {
       const editorRect = editor.getBoundingClientRect();
       const rowRect = editor.closest('.item-row').getBoundingClientRect();
@@ -1493,12 +1738,26 @@ window.__desktopQa = {
     elements.timeTextInput.value = '1444';
     elements.saveSchedule.click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    openSchedule(emptyId);
+    elements.datetimeDateInput.value = '';
+    elements.timeTextInput.value = '';
+    elements.saveSchedule.click();
+    const unsetClearsTime = state.items.find((item) => item.id === emptyId).schedule.mode === 'none'
+      && state.items.find((item) => item.id === emptyId).schedule.value === '';
+    openSchedule(emptyId);
+    elements.datetimeDateInput.value = '';
+    elements.timeTextInput.value = '905';
+    elements.saveSchedule.click();
+    const timeOnlyWorks = state.items.find((item) => item.id === emptyId).schedule.mode === 'time'
+      && state.items.find((item) => item.id === emptyId).schedule.value === '09:05';
     const directTimeInputWorks = state.items.find((item) => item.id === exactId).schedule.value === '2026-08-20T14:44'
       && normalizeDirectTime('905') === '09:05'
       && normalizeDirectTime('23：59') === '23:59'
       && normalizeDirectTime('24:00') === null
       && elements.datetimeDateInput.type === 'date'
-      && elements.timeTextInput.type === 'text';
+      && elements.timeTextInput.type === 'text'
+      && unsetClearsTime
+      && timeOnlyWorks;
     updateSchedule(dateId, { mode: 'date', value: '2026-08-21' });
     updateSchedule(emptyId, { mode: 'none', value: '' });
     const exactMinuteWorks = state.items.find((item) => item.id === exactId).schedule.value === '2026-08-20T14:44';
@@ -1531,7 +1790,8 @@ window.__desktopQa = {
       && emptyHintStyles?.content.includes('设置时间')
       && Number(emptyRect?.width) >= 48
       && Number(emptyRect?.height) >= 20
-      && invisibleTimeClickable,
+      && invisibleTimeClickable
+      && Boolean(document.querySelector('#clearDate') && document.querySelector('#clearTime')),
     );
 
     const movedId = state.items.at(-1).id;
@@ -1634,6 +1894,7 @@ window.__desktopQa = {
       scrollsWhenOverflowing,
       directlyEditable,
       typographyImproved,
+      fontSizeAdjustWorks,
       singleLineCentered,
       emptyTodoDeletesImmediately,
       nonEmptyTodoRequiresConfirmation,

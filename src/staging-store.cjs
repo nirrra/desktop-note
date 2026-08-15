@@ -7,6 +7,7 @@ const MAX_STAGING_ITEMS = 200;
 const MAX_STAGING_TEXT_LENGTH = 5000;
 const MAX_STAGING_IMAGE_BYTES = 30 * 1024 * 1024;
 const MAX_DISPLAY_NAME_LENGTH = 120;
+const MAX_FILE_PATH_LENGTH = 4096;
 
 const IMAGE_FORMATS = {
   '.png': { mimeType: 'image/png', format: 'PNG' },
@@ -57,8 +58,14 @@ function normalizeSuggestedName(displayName, extension) {
   return `${stem}${extension}`;
 }
 
+function normalizeFilePath(value) {
+  const resolved = path.resolve(String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim());
+  if (!path.isAbsolute(resolved) || resolved.length > MAX_FILE_PATH_LENGTH) return '';
+  return resolved;
+}
+
 function normalizeStoredItem(raw, index = 0) {
-  if (!raw || !['text', 'image'].includes(raw.type)) return null;
+  if (!raw || !['text', 'image', 'file'].includes(raw.type)) return null;
   const id = String(raw.id ?? '').trim();
   if (!/^[a-zA-Z0-9-]{8,80}$/.test(id)) return null;
   const createdAt = Number.isFinite(raw.createdAt) ? raw.createdAt : Date.now() - index;
@@ -72,6 +79,19 @@ function normalizeStoredItem(raw, index = 0) {
   if (raw.type === 'text') {
     if (typeof raw.text !== 'string') return null;
     return { ...common, text: raw.text.slice(0, MAX_STAGING_TEXT_LENGTH) };
+  }
+
+  if (raw.type === 'file') {
+    const filePath = normalizeFilePath(raw.filePath);
+    if (!filePath) return null;
+    const extension = path.extname(filePath).toLowerCase().slice(0, 16);
+    return {
+      ...common,
+      name: sanitizeDisplayName(raw.name ?? path.basename(filePath), '暂存文件'),
+      filePath,
+      extension,
+      bytes: Math.max(0, Math.round(Number(raw.bytes) || 0)),
+    };
   }
 
   if (!isSafeStorageName(raw.fileName) || !isSafeStorageName(raw.thumbnailName)) return null;
@@ -92,8 +112,26 @@ function normalizeStoredItem(raw, index = 0) {
   };
 }
 
+function inspectFilePath(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) return { exists: false, bytes: 0 };
+    return { exists: true, bytes: stat.size };
+  } catch {
+    return { exists: false, bytes: 0 };
+  }
+}
+
 function toPublicItem(item) {
   if (item.type === 'text') return { ...item };
+  if (item.type === 'file') {
+    const live = inspectFilePath(item.filePath);
+    return {
+      ...item,
+      bytes: live.exists ? live.bytes : item.bytes,
+      exists: live.exists,
+    };
+  }
   const { fileName: _fileName, thumbnailName: _thumbnailName, extension: _extension, ...publicItem } = item;
   return publicItem;
 }
@@ -201,6 +239,35 @@ function createStagingStore({ baseDirectory, nativeImage, now = () => Date.now()
     return pending;
   }
 
+  async function sweepOrphanedImages() {
+    const usedOriginals = new Set(items.filter((item) => item.type === 'image').map((item) => item.fileName));
+    const usedThumbnails = new Set(items.filter((item) => item.type === 'image').map((item) => item.thumbnailName));
+    await Promise.all([
+      removeUnusedFiles(originalsDirectory, usedOriginals),
+      removeUnusedFiles(thumbnailsDirectory, usedThumbnails),
+    ]);
+  }
+
+  async function removeUnusedFiles(directory, usedNames) {
+    let names = [];
+    try {
+      names = await fs.promises.readdir(directory);
+    } catch {
+      return;
+    }
+    await Promise.all(names.map((name) => (
+      usedNames.has(name) ? Promise.resolve() : fs.promises.unlink(path.join(directory, name)).catch(() => {})
+    )));
+  }
+
+  async function removeStoredImageFiles(item) {
+    if (item?.type !== 'image') return;
+    await Promise.all([
+      fs.promises.unlink(path.join(originalsDirectory, item.fileName)).catch(() => {}),
+      fs.promises.unlink(path.join(thumbnailsDirectory, item.thumbnailName)).catch(() => {}),
+    ]);
+  }
+
   async function list() {
     await load();
     return items.map(toPublicItem);
@@ -285,6 +352,50 @@ function createStagingStore({ baseDirectory, nativeImage, now = () => Date.now()
     return importImageBuffer(await fs.promises.readFile(resolvedPath), { name: path.basename(resolvedPath) });
   }
 
+  async function createFileBookmark(filePath) {
+    const resolvedPath = normalizeFilePath(filePath);
+    if (!resolvedPath) throw createStoreError('INVALID_PATH', '文件路径无效');
+    const stat = await fs.promises.stat(resolvedPath);
+    if (!stat.isFile()) throw createStoreError('NOT_A_FILE', '选择的内容不是文件');
+    return mutate(async () => {
+      if (items.length >= MAX_STAGING_ITEMS) throw createStoreError('LIMIT_ITEMS', `暂存区最多保存 ${MAX_STAGING_ITEMS} 项`);
+      const timestamp = now();
+      const item = {
+        id: createId(),
+        type: 'file',
+        name: sanitizeDisplayName(path.basename(resolvedPath), '暂存文件'),
+        filePath: resolvedPath,
+        extension: path.extname(resolvedPath).toLowerCase().slice(0, 16),
+        bytes: stat.size,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      items.unshift(item);
+      await persist();
+      return toPublicItem(item);
+    });
+  }
+
+  async function importLocalFile(filePath) {
+    const resolvedPath = normalizeFilePath(filePath);
+    if (!resolvedPath) throw createStoreError('INVALID_PATH', '文件路径无效');
+    const stat = await fs.promises.stat(resolvedPath);
+    if (!stat.isFile()) throw createStoreError('NOT_A_FILE', '选择的内容不是文件');
+    if (stat.size <= MAX_STAGING_IMAGE_BYTES) {
+      const handle = await fs.promises.open(resolvedPath, 'r');
+      try {
+        const header = Buffer.alloc(16);
+        await handle.read(header, 0, 16, 0);
+        if (detectImageExtension(header)) {
+          return importImageFile(resolvedPath);
+        }
+      } finally {
+        await handle.close();
+      }
+    }
+    return createFileBookmark(resolvedPath);
+  }
+
   async function updateText(id, text) {
     return mutate(async () => {
       const item = items.find((candidate) => candidate.id === id && candidate.type === 'text');
@@ -313,13 +424,9 @@ function createStagingStore({ baseDirectory, nativeImage, now = () => Date.now()
       const index = items.findIndex((candidate) => candidate.id === id);
       if (index < 0) throw createStoreError('ITEM_NOT_FOUND', '暂存项不存在');
       const [item] = items.splice(index, 1);
-      if (item.type === 'image') {
-        await Promise.all([
-          fs.promises.unlink(path.join(originalsDirectory, item.fileName)).catch(() => {}),
-          fs.promises.unlink(path.join(thumbnailsDirectory, item.thumbnailName)).catch(() => {}),
-        ]);
-      }
+      await removeStoredImageFiles(item);
       await persist();
+      await sweepOrphanedImages();
       return toPublicItem(item);
     });
   }
@@ -328,11 +435,9 @@ function createStagingStore({ baseDirectory, nativeImage, now = () => Date.now()
     return mutate(async () => {
       const removed = items;
       items = [];
-      await Promise.all(removed.flatMap((item) => item.type === 'image' ? [
-        fs.promises.unlink(path.join(originalsDirectory, item.fileName)).catch(() => {}),
-        fs.promises.unlink(path.join(thumbnailsDirectory, item.thumbnailName)).catch(() => {}),
-      ] : []));
+      await Promise.all(removed.map((item) => removeStoredImageFiles(item)));
       await persist();
+      await sweepOrphanedImages();
       return removed.length;
     });
   }
@@ -357,6 +462,8 @@ function createStagingStore({ baseDirectory, nativeImage, now = () => Date.now()
     createText,
     importImageBuffer,
     importImageFile,
+    importLocalFile,
+    createFileBookmark,
     updateText,
     reorder,
     remove,
@@ -378,5 +485,6 @@ module.exports = {
   MAX_STAGING_TEXT_LENGTH,
   createStagingStore,
   detectImageExtension,
+  normalizeFilePath,
   sanitizeDisplayName,
 };

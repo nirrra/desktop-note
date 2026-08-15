@@ -6,6 +6,11 @@ const elements = {
   title: document.querySelector('#previewTitle'),
   image: document.querySelector('#previewImage'),
   text: document.querySelector('#previewText'),
+  file: document.querySelector('#previewFile'),
+  fileName: document.querySelector('#previewFileName'),
+  fileKind: document.querySelector('#previewFileKind'),
+  filePath: document.querySelector('#previewFilePath'),
+  fileStatus: document.querySelector('#previewFileStatus'),
   meta: document.querySelector('#previewMeta'),
   status: document.querySelector('#previewStatus'),
   close: document.querySelector('#closePreview'),
@@ -31,6 +36,24 @@ function renderItem(item) {
   document.body.classList.remove('is-loaded');
   elements.image.removeAttribute('src');
   elements.text.textContent = '';
+  if (elements.fileName) elements.fileName.textContent = '';
+  if (elements.fileKind) elements.fileKind.textContent = '';
+  if (elements.filePath) elements.filePath.textContent = '';
+  if (elements.fileStatus) elements.fileStatus.textContent = '';
+
+  if (item.type === 'file') {
+    document.title = `文件 · ${item.name}`;
+    elements.title.textContent = item.name;
+    const kind = (item.extension || '').replace(/^\./, '').toUpperCase() || '文件';
+    elements.meta.textContent = item.exists === false ? '文件已不存在' : kind;
+    elements.save.textContent = '另存副本';
+    elements.fileName.textContent = item.name;
+    elements.fileKind.textContent = kind;
+    elements.filePath.textContent = item.filePath;
+    elements.fileStatus.textContent = item.exists === false ? '文件已不存在' : '停留预览 · 点击用默认程序打开';
+    document.body.classList.add('is-loaded');
+    return;
+  }
 
   if (item.type === 'text') {
     document.title = '文字预览';
@@ -54,7 +77,7 @@ function renderItem(item) {
 
 async function loadPreview() {
   const result = await bridge.getData();
-  if (!result?.ok || !['image', 'text'].includes(result.item?.type)) {
+  if (!result?.ok || !['image', 'text', 'file'].includes(result.item?.type)) {
     showStatus(result?.error ?? '预览内容不存在');
     setBusy(true);
     return;

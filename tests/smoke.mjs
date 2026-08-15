@@ -23,7 +23,7 @@ const previewRenderer = read('src/preview.js');
 const previewPreload = read('src/preview-preload.cjs');
 
 assert.equal(packageJson.main, 'main.js');
-assert.equal(packageJson.version, '0.3.20');
+assert.equal(packageJson.version, '0.3.21');
 assert.equal(packageJson.build.productName, '桌面便签');
 assert.equal(packageJson.build.artifactName, 'desktop-note-${version}-${arch}.${ext}');
 assert.ok(packageJson.build.win.target.some((target) => target.target === 'portable'));
@@ -38,7 +38,7 @@ for (const requiredFile of [
   assert.ok(fs.existsSync(path.join(root, requiredFile)), `${requiredFile} should exist`);
 }
 
-assert.match(main, /DEFAULT_SIZE\s*=\s*\{\s*width:\s*420,\s*height:\s*480\s*\}/);
+assert.match(main, /DEFAULT_SIZE\s*=\s*\{\s*width:\s*420,\s*height:\s*340\s*\}/);
 assert.match(main, /contextIsolation:\s*true/);
 assert.match(main, /function guardGuiOutputStream/);
 assert.match(main, /guardGuiOutputStream\(process\.stdout\)/);
@@ -135,7 +135,7 @@ assert.deepEqual(resolveLaunchAtLoginState({
 
 for (const requiredId of [
   'addItem', 'itemsList', 'itemTemplate', 'settingsPanel', 'schedulePanel',
-  'opacityInput', 'widthInput', 'heightInput', 'edgeHandle', 'hideButton',
+  'opacityInput', 'fontSizeInput', 'widthInput', 'heightInput', 'edgeHandle', 'hideButton',
   'launchAtLoginToggle', 'launchAtLoginHint',
   'itemsTab', 'stagingTab', 'stagingWorkspace', 'stagingList', 'stagingItemTemplate',
   'pasteStaging', 'clearStaging', 'dropOverlay',
@@ -183,16 +183,24 @@ assert.doesNotMatch(html, /imagePreviewPanel|imagePreview/);
 
 assert.match(css, /--font:\s*"Microsoft YaHei UI"/);
 assert.match(css, /--number-font:\s*"Segoe UI Variable Text"/);
-assert.match(css, /\.drag-surface > time[\s\S]*font-size:\s*13px[\s\S]*font-variant-numeric:\s*tabular-nums/);
+assert.match(css, /\.drag-surface > time[\s\S]*font-size:\s*var\(--font-size,\s*13px\)[\s\S]*font-variant-numeric:\s*tabular-nums/);
 assert.match(css, /\.items-list[\s\S]*overflow-y:\s*auto/);
 assert.match(css, /\.item-row[\s\S]*grid-template-columns:\s*18px 18px minmax\(0,\s*1fr\) auto 22px/);
 assert.match(css, /\.item-editor[\s\S]*align-self:\s*center/);
-assert.match(css, /\.item-editor[\s\S]*font-size:\s*13px/);
+assert.match(css, /\.item-editor[\s\S]*font-size:\s*var\(--font-size,\s*13px\)/);
 assert.match(css, /\.schedule-button[\s\S]*min-width:\s*52px[\s\S]*border:\s*0[\s\S]*border-radius:\s*0/);
-assert.match(css, /\.time-main[\s\S]*font-size:\s*11px/);
+assert.match(css, /\.time-main[\s\S]*font-size:\s*calc\(var\(--font-size,\s*13px\) \* 11 \/ 13\)/);
 assert.match(css, /\.schedule-button:not\(\.has-time\)::after[\s\S]*content:\s*"设置时间"/);
-assert.match(css, /\.datetime-inputs[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) 78px/);
+assert.match(css, /\.datetime-inputs[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(108px,\s*0\.86fr\)/);
+assert.match(css, /\.schedule-content[\s\S]*align-content:\s*start[\s\S]*overflow:\s*hidden/);
 assert.match(css, /\.direct-time-input[\s\S]*font-variant-numeric:\s*tabular-nums/);
+assert.match(html, /id="clearDate"/);
+assert.match(html, /id="clearTime"/);
+assert.match(html, /id="datePickerPanel"/);
+assert.match(html, /placeholder="不设置"/);
+assert.doesNotMatch(html, /具体时间|仅日期|timeInputHint|mode-tabs|data-schedule-mode/);
+assert.match(renderer, /function todayIsoDate/);
+assert.match(renderer, /function closeSchedulePickers/);
 assert.match(css, /\.app\.is-edge-hidden \.widget-shell/);
 assert.match(css, /\.app\.is-edge-hidden \.overlay-panel/);
 assert.match(css, /\.app\.is-edge-hidden \.toast/);
@@ -294,9 +302,17 @@ assert.match(renderer, /dragstart/);
 assert.match(renderer, /addEventListener\('input'/);
 assert.match(renderer, /mode:\s*'datetime'/);
 assert.match(renderer, /mode:\s*'date'/);
+assert.match(renderer, /mode:\s*'time'/);
+assert.match(renderer, /unsetClearsTime/);
+assert.match(css, /\.picker-clear[\s\S]*height:\s*36px/);
 assert.match(renderer, /padStart\(2,\s*'0'\)/);
 assert.match(renderer, /invisibleTimeClickable/);
-assert.match(renderer, /function normalizeDirectTime/);
+assert.match(renderer, /function setFontSize/);
+assert.match(renderer, /fontSizeAdjustWorks/);
+assert.match(renderer, /FONT_SIZE_MIN\s*=\s*12/);
+assert.match(renderer, /FONT_SIZE_MAX\s*=\s*20/);
+assert.match(html, /id="fontSizeInput"[^>]*min="12"[^>]*max="20"/);
+assert.match(css, /\.staging-image-name,\s*\.staging-text-editor[\s\S]*font-weight:\s*400/);
 assert.match(renderer, /directTimeInputWorks/);
 assert.match(renderer, /function refreshLaunchAtLogin/);
 assert.match(renderer, /function updateLaunchAtLogin/);
@@ -308,6 +324,9 @@ assert.match(preload, /getLaunchAtLogin:[\s\S]*system:get-launch-at-login/);
 assert.match(preload, /setLaunchAtLogin:[\s\S]*system:set-launch-at-login/);
 assert.match(preload, /listStaging:[\s\S]*staging:list/);
 assert.match(preload, /importStagingFiles:[\s\S]*staging:import-files/);
+assert.match(preload, /importStagingPaths:[\s\S]*staging:import-paths/);
+assert.match(preload, /openStagingFile:[\s\S]*staging:open-file/);
+assert.match(preload, /getPathForFile/);
 assert.match(preload, /pasteToStaging:[\s\S]*staging:paste/);
 assert.match(preload, /openStagingPreview:[\s\S]*staging:open-preview/);
 assert.match(preload, /closeStagingPreview:[\s\S]*staging:close-preview/);
@@ -342,6 +361,15 @@ assert.match(main, /06e-floating-preview\.png/);
 assert.match(stagingStore, /MAX_STAGING_IMAGE_BYTES\s*=\s*30 \* 1024 \* 1024/);
 assert.match(stagingStore, /function detectImageExtension/);
 assert.match(stagingStore, /function createStagingStore/);
+assert.match(stagingStore, /async function importLocalFile/);
+assert.match(stagingStore, /type: 'file'/);
+assert.match(stagingStore, /async function sweepOrphanedImages/);
+assert.match(main, /staging:import-paths/);
+assert.match(main, /function openStagedFile/);
+assert.match(main, /shell\.openPath/);
+assert.match(renderer, /item\.type === 'file'/);
+assert.match(previewRenderer, /item\.type === 'file'/);
+assert.match(previewHtml, /id="previewFile"/);
 assert.match(stagingStore, /async function reorder/);
 assert.doesNotMatch(renderer, /edgeHoverActive|edgeHandle\.addEventListener\('mouseenter'|app\.addEventListener\('mouseleave'/);
 assert.match(renderer, /if \(hiddenAtEdge\)[\s\S]*closePanels\(\)[\s\S]*toast\.classList\.remove\('is-visible'\)/);

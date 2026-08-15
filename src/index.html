@@ -70,7 +70,7 @@
               <div id="stagingEmpty" class="staging-empty" hidden>
                 <span class="staging-empty-mark" aria-hidden="true">T</span>
                 <strong>暂存区还是空的</strong>
-                <small>粘贴内容或拖入图片</small>
+                <small>粘贴内容，或拖入图片和文件</small>
               </div>
             </div>
 
@@ -78,9 +78,9 @@
               <button id="pasteStaging" class="dropzone-action" type="button" title="读取当前剪贴板" aria-label="粘贴到暂存区">
                 <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2" /><path d="M10 6.6v6.8M6.6 10h6.8" /></svg>
               </button>
-              <span class="dropzone-copy">粘贴内容或拖拽文件到此处 (Ctrl+V)</span>
+              <span class="dropzone-copy">粘贴内容或拖入文件到此处 (Ctrl+V)</span>
               <button id="clearStaging" class="clear-staging" type="button">清空</button>
-              <button id="addStaging" class="dropzone-action" type="button" aria-label="上传图片到暂存区" title="上传图片到暂存区">
+              <button id="addStaging" class="dropzone-action" type="button" aria-label="添加文件到暂存区" title="添加文件到暂存区">
                 <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.4" y="5" width="13.2" height="10.4" rx="1.8" /><path d="m6.2 12.4 2.4-2.6 2.2 2.1 2.4-3.1 2.6 3.6" /><circle cx="7.4" cy="8.1" r="1" /></svg>
               </button>
             </div>
@@ -123,6 +123,16 @@
                 </label>
                 <p class="setting-tip">调整窗口背景透明度，打造轻盈的悬浮体验。</p>
               </div>
+
+              <div class="setting-block font-block">
+                <span class="setting-label">字体大小</span>
+                <label class="opacity-row" for="fontSizeInput">
+                  <span>小</span>
+                  <input id="fontSizeInput" type="range" min="12" max="20" step="1" value="13" />
+                  <span>大</span>
+                  <output id="fontSizeValue" for="fontSizeInput">13px</output>
+                </label>
+              </div>
             </section>
 
             <section id="settingsBehavior" class="settings-section">
@@ -131,7 +141,7 @@
                 <div class="setting-row size-row">
                   <label><span>宽</span><input id="widthInput" type="number" min="320" max="640" step="10" value="420" /><small>px</small></label>
                   <span class="multiply">×</span>
-                  <label><span>高</span><input id="heightInput" type="number" min="280" max="640" step="10" value="480" /><small>px</small></label>
+                  <label><span>高</span><input id="heightInput" type="number" min="280" max="640" step="10" value="340" /><small>px</small></label>
                   <button id="applySize" type="button">应用</button>
                 </div>
                 <p class="setting-hint">修改组件尺寸后将应用到主窗口。</p>
@@ -159,7 +169,7 @@
             <section id="settingsAbout" class="settings-section">
               <div class="setting-block about-block">
                 <span class="setting-label">关于</span>
-                <strong>桌面便签 0.3.20</strong>
+                <strong>桌面便签 0.3.21</strong>
                 <p>待办与图文暂存工作区。内容只保存在本机，不会上传。</p>
               </div>
             </section>
@@ -173,40 +183,53 @@
         </header>
 
         <div class="schedule-content">
-          <div class="mode-tabs" role="tablist" aria-label="时间精度">
-            <button type="button" data-schedule-mode="datetime">具体时间</button>
-            <button type="button" data-schedule-mode="date">仅日期</button>
-            <button type="button" data-schedule-mode="none">不设置</button>
-          </div>
-
           <div id="datetimeField" class="schedule-field">
             <div class="datetime-inputs">
-              <label>
+              <div class="schedule-picker">
                 <span>日期</span>
-                <input id="datetimeDateInput" type="date" />
-              </label>
-              <label>
+                <button id="datePickerButton" class="picker-trigger is-empty" type="button" aria-haspopup="dialog" aria-expanded="false">
+                  <svg class="picker-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.6" /><path d="M2.5 6.5h11M6 2.5v2.2M10 2.5v2.2" /></svg>
+                  <span id="datePickerLabel">不设置</span>
+                </button>
+                <input id="datetimeDateInput" class="picker-native" type="date" tabindex="-1" aria-hidden="true" />
+                <div id="datePickerPanel" class="picker-panel" hidden>
+                  <div class="calendar-nav">
+                    <button type="button" id="datePickerPrev" aria-label="上个月">‹</button>
+                    <strong id="datePickerMonth"></strong>
+                    <button type="button" id="datePickerNext" aria-label="下个月">›</button>
+                  </div>
+                  <div class="calendar-weekdays" aria-hidden="true">
+                    <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+                  </div>
+                  <div id="datePickerDays" class="calendar-days"></div>
+                  <button type="button" id="clearDate" class="picker-clear"><span aria-hidden="true">×</span>不设置</button>
+                </div>
+              </div>
+              <div class="schedule-picker">
                 <span>时间</span>
-                <input
-                  id="timeTextInput"
-                  class="direct-time-input"
-                  type="text"
-                  inputmode="numeric"
-                  maxlength="5"
-                  placeholder="14:44"
-                  autocomplete="off"
-                  spellcheck="false"
-                  aria-describedby="timeInputHint"
-                />
-              </label>
+                <div class="time-trigger-wrap">
+                  <svg class="picker-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.2" /><path d="M8 5.2v3.1l2.1 1.2" /></svg>
+                  <input
+                    id="timeTextInput"
+                    class="direct-time-input"
+                    type="text"
+                    inputmode="numeric"
+                    maxlength="5"
+                    placeholder="不设置"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </div>
+                <div id="timePickerPanel" class="picker-panel time-picker-panel" hidden>
+                  <div class="time-columns">
+                    <div id="timeHourList" class="time-col" role="listbox" aria-label="时"></div>
+                    <div id="timeMinuteList" class="time-col" role="listbox" aria-label="分"></div>
+                  </div>
+                  <button type="button" id="clearTime" class="picker-clear"><span aria-hidden="true">×</span>不设置</button>
+                </div>
+              </div>
             </div>
-            <small id="timeInputHint">直接输入 1444 或 14:44</small>
           </div>
-          <label id="dateField" class="schedule-field" hidden>
-            <span>选择日期</span>
-            <input id="dateInput" type="date" />
-          </label>
-          <p id="noneField" class="none-field" hidden>该待办不显示时间，可随时再次添加。</p>
 
           <footer class="schedule-actions">
             <button type="button" data-close-panel>取消</button>
@@ -217,7 +240,7 @@
 
       <div id="dropOverlay" class="drop-overlay" hidden>
         <span aria-hidden="true">＋</span>
-        <strong>松开即可暂存图片</strong>
+        <strong>松开即可暂存</strong>
       </div>
 
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -254,8 +277,8 @@
           </button>
           <div class="staging-content">
             <div class="staging-title-row">
-              <strong class="staging-image-name"></strong>
               <span class="staging-tag"></span>
+              <strong class="staging-image-name"></strong>
             </div>
             <textarea class="staging-text-editor" rows="1" maxlength="5000" placeholder="输入暂存文字…"></textarea>
             <small class="staging-meta"></small>

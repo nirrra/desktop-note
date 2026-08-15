@@ -76,6 +76,7 @@ textarea:focus-visible {
   overflow: hidden;
   background: transparent;
   color: var(--text);
+  --font-size: 13px;
 }
 
 .app[data-theme="gray"] {
@@ -278,7 +279,7 @@ textarea:focus-visible {
 .drag-surface > time {
   color: var(--text-soft);
   font-family: var(--font);
-  font-size: 13px;
+  font-size: var(--font-size, 13px);
   font-weight: 500;
   line-height: 1;
   letter-spacing: 0;
@@ -496,7 +497,7 @@ textarea:focus-visible {
   border-radius: 10px;
   background: var(--input-fill);
   color: var(--text-soft);
-  font-size: 13px;
+  font-size: var(--font-size, 13px);
   font-weight: 400;
   letter-spacing: 0;
   cursor: text;
@@ -612,7 +613,7 @@ textarea:focus-visible {
   outline: 0;
   background: transparent;
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--font-size, 13px);
   user-select: text;
 }
 
@@ -807,8 +808,8 @@ textarea:focus-visible {
   align-self: center;
   width: 100%;
   min-width: 0;
-  height: 22px;
-  max-height: 40px;
+  height: calc(var(--font-size, 13px) * 22 / 13);
+  max-height: calc(var(--font-size, 13px) * 40 / 13);
   resize: none;
   overflow: hidden;
   padding: 1px 4px;
@@ -818,9 +819,9 @@ textarea:focus-visible {
   background: transparent;
   color: var(--text);
   font-family: var(--font);
-  font-size: 13px;
+  font-size: var(--font-size, 13px);
   font-weight: 400;
-  line-height: 20px;
+  line-height: calc(var(--font-size, 13px) * 20 / 13);
   letter-spacing: 0;
   text-rendering: optimizeLegibility;
   user-select: text;
@@ -883,11 +884,11 @@ textarea:focus-visible {
   overflow: hidden;
   max-width: 100%;
   font-family: var(--number-font);
-  font-size: 11px;
+  font-size: calc(var(--font-size, 13px) * 11 / 13);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
-  line-height: 22px;
+  line-height: calc(var(--font-size, 13px) * 22 / 13);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -896,7 +897,7 @@ textarea:focus-visible {
   content: "设置时间";
   color: var(--text-soft);
   font-family: var(--font);
-  font-size: 10px;
+  font-size: calc(var(--font-size, 13px) * 10 / 13);
   font-weight: 500;
   letter-spacing: 0;
   opacity: 0;
@@ -1005,7 +1006,7 @@ textarea:focus-visible {
 }
 
 .empty-state strong {
-  font-size: 12px;
+  font-size: var(--font-size, 13px);
   font-weight: 650;
   letter-spacing: 0.01em;
 }
@@ -1118,13 +1119,28 @@ textarea:focus-visible {
   display: none;
 }
 
-.staging-row[data-kind="image"] .staging-text-editor {
+.staging-row[data-kind="image"] .staging-text-editor,
+.staging-row[data-kind="file"] .staging-text-editor,
+.staging-row[data-kind="file"] .staging-thumbnail {
   display: none;
 }
 
 .staging-row[data-kind="text"] .staging-text-mark,
-.staging-row[data-kind="text"] .staging-text-editor {
+.staging-row[data-kind="text"] .staging-text-editor,
+.staging-row[data-kind="file"] .staging-text-mark,
+.staging-row[data-kind="file"] .staging-image-name {
   display: block;
+}
+
+.staging-row[data-kind="file"] .staging-text-mark {
+  font-family: var(--number-font);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.staging-row.is-missing {
+  opacity: 0.62;
 }
 
 .staging-row[data-kind="text"] .staging-title-row {
@@ -1132,7 +1148,8 @@ textarea:focus-visible {
 }
 
 .staging-row[data-kind="text"] .staging-content {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 6px;
 }
 
 .staging-row[data-kind="text"] .staging-tag {
@@ -1157,13 +1174,22 @@ textarea:focus-visible {
   gap: 6px;
 }
 
+.staging-title-row .staging-tag {
+  flex: 0 0 auto;
+}
+
+.staging-title-row .staging-image-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .staging-image-name,
 .staging-text-editor {
   overflow: hidden;
   color: var(--text);
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 18px;
+  font-size: var(--font-size, 13px);
+  font-weight: 400;
+  line-height: calc(var(--font-size, 13px) * 18 / 13);
   letter-spacing: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1184,7 +1210,7 @@ textarea:focus-visible {
   overflow: hidden;
   color: var(--text-soft);
   font-family: var(--number-font);
-  font-size: 11px;
+  font-size: calc(var(--font-size, 13px) * 11 / 13);
   font-weight: 400;
   font-variant-numeric: tabular-nums;
   line-height: 16px;
@@ -1402,7 +1428,7 @@ textarea:focus-visible {
 }
 
 .overlay-header strong {
-  font-size: 13px;
+  font-size: var(--font-size, 13px);
   font-weight: 680;
   letter-spacing: 0.02em;
 }
@@ -1494,7 +1520,7 @@ textarea:focus-visible {
 
 .setting-label {
   color: var(--text);
-  font-size: 12px;
+  font-size: calc(var(--font-size, 13px) * 12 / 13);
   font-weight: 650;
   letter-spacing: 0;
   white-space: nowrap;
@@ -1521,7 +1547,7 @@ textarea:focus-visible {
 .setting-hint {
   margin: 0;
   color: var(--text-soft);
-  font-size: 10px;
+  font-size: calc(var(--font-size, 13px) * 10 / 13);
   font-weight: 400;
   line-height: 1.45;
 }
@@ -1533,14 +1559,14 @@ textarea:focus-visible {
 }
 
 .about-block strong {
-  font-size: 12px;
+  font-size: calc(var(--font-size, 13px) * 12 / 13);
   font-weight: 650;
 }
 
 .about-block p {
   margin: 0;
   color: var(--text-soft);
-  font-size: 8.5px;
+  font-size: calc(var(--font-size, 13px) * 8.5 / 13);
   line-height: 1.45;
 }
 
@@ -1558,7 +1584,7 @@ textarea:focus-visible {
 
 .opacity-row > span {
   color: var(--text-soft);
-  font-size: 10px;
+  font-size: calc(var(--font-size, 13px) * 10 / 13);
   white-space: nowrap;
 }
 
@@ -1580,7 +1606,7 @@ textarea:focus-visible {
   border-radius: 10px;
   background: color-mix(in srgb, var(--input-fill) 55%, transparent);
   color: var(--text-soft);
-  font-size: 10px;
+  font-size: calc(var(--font-size, 13px) * 10 / 13);
   font-weight: 600;
   cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
@@ -1644,9 +1670,9 @@ textarea:focus-visible {
 }
 
 .opacity-row output {
-  width: 34px;
+  width: 46px;
   color: var(--text-soft);
-  font-size: 11px;
+  font-size: calc(var(--font-size, 13px) * 11 / 13);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -1666,29 +1692,32 @@ textarea:focus-visible {
 .size-row label span,
 .multiply {
   color: var(--text-soft);
-  font-size: 10px;
+  font-size: calc(var(--font-size, 13px) * 10 / 13);
 }
 
 .size-row input {
-  width: 49px;
-  height: 27px;
-  padding: 0 6px;
+  width: 6.4em;
+  min-width: 72px;
+  height: 2.3em;
+  min-height: 27px;
+  padding: 0 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--input-fill);
   color: var(--text);
-  font-size: 12px;
+  font-size: calc(var(--font-size, 13px) * 12 / 13);
   font-variant-numeric: tabular-nums;
 }
 
 .size-row button {
-  height: 27px;
+  height: 2.3em;
+  min-height: 27px;
   padding: 0 9px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: var(--accent);
   color: var(--accent-text);
-  font-size: 12px;
+  font-size: calc(var(--font-size, 13px) * 12 / 13);
   font-weight: 650;
   cursor: pointer;
 }
@@ -1731,7 +1760,7 @@ textarea:focus-visible {
 
 .setting-copy small {
   color: color-mix(in srgb, var(--text-soft) 88%, transparent);
-  font-size: 10px;
+  font-size: calc(var(--font-size, 13px) * 10 / 13);
   font-weight: 400;
   line-height: 1.3;
 }
@@ -1789,73 +1818,107 @@ textarea:focus-visible {
 
 .schedule-content {
   display: grid;
+  align-content: start;
+  align-items: start;
   min-height: 0;
-  gap: 7px;
-  overflow: auto;
-  padding: 8px 11px 9px;
-}
-
-.mode-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 3px;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--input-fill) 70%, transparent);
-}
-
-.mode-tabs button {
-  height: 25px;
-  padding: 0 4px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-soft);
-  font-size: 9px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.mode-tabs button.is-active {
-  background: color-mix(in srgb, var(--accent) 16%, var(--hover-fill));
-  color: var(--accent);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  gap: 8px;
+  overflow: hidden;
+  padding: 6px 11px 8px;
 }
 
 .schedule-field {
   display: grid;
-  gap: 4px;
+  width: 100%;
+  gap: 0;
 }
 
-.schedule-field[hidden],
-.none-field[hidden] {
+.schedule-field[hidden] {
   display: none;
 }
 
-.schedule-field > span,
-.datetime-inputs label span,
-.schedule-field small,
-.none-field {
+.schedule-picker > span {
   color: var(--text-soft);
   font-size: 9px;
+  line-height: 1.2;
 }
 
 .datetime-inputs {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 78px;
+  grid-template-columns: minmax(0, 1fr) minmax(108px, 0.86fr);
+  align-items: start;
   gap: 6px;
 }
 
-.datetime-inputs label {
+.schedule-picker {
+  position: relative;
   display: grid;
+  align-content: start;
   min-width: 0;
-  gap: 3px;
+  gap: 2px;
 }
 
-.schedule-field small {
-  font-size: 8px;
-  line-height: 10px;
+.picker-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.picker-trigger {
+  display: flex;
+  width: 100%;
+  height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--input-fill);
+  color: var(--text);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-trigger.is-empty,
+.direct-time-input::placeholder {
+  color: var(--text-soft);
+}
+
+.picker-icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.4;
+  opacity: 0.72;
+}
+
+#datePickerLabel {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-trigger-wrap {
+  position: relative;
+  height: 30px;
+}
+
+.time-trigger-wrap .picker-icon {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  z-index: 1;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .schedule-field input {
@@ -1865,23 +1928,27 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--input-fill);
+  color: var(--text);
   color-scheme: dark;
   font-size: 10px;
 }
 
 .schedule-field .direct-time-input {
-  padding: 0 8px;
+  padding: 0 8px 0 24px;
   font-family: var(--number-font);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.055em;
-  text-align: center;
+  text-align: left;
+  cursor: text;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
-.schedule-field .direct-time-input:focus {
+.schedule-field .direct-time-input:focus,
+.picker-trigger:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 68%, var(--line-strong));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+  outline: 0;
 }
 
 .schedule-field .direct-time-input.is-invalid {
@@ -1901,12 +1968,163 @@ textarea:focus-visible {
   color-scheme: dark;
 }
 
-.none-field {
-  min-height: 30px;
-  margin: 0;
-  padding: 7px;
-  border: 1px dashed var(--line);
-  border-radius: 5px;
+.picker-panel {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + 3px);
+  left: 0;
+  min-width: 100%;
+  padding: 6px 6px 2px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(var(--overlay-rgb), 0.98);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+}
+
+.picker-panel[hidden] {
+  display: none;
+}
+
+.time-picker-panel {
+  right: 0;
+  left: auto;
+  width: 118px;
+  min-width: 118px;
+}
+
+.calendar-nav {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 24px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.calendar-nav strong {
+  font-size: 11px;
+  font-weight: 650;
+  text-align: center;
+}
+
+.calendar-nav button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.calendar-nav button:hover {
+  background: var(--hover-fill);
+}
+
+.calendar-weekdays,
+.calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.calendar-weekdays {
+  margin-bottom: 2px;
+  color: var(--text-soft);
+  font-size: 9px;
+  text-align: center;
+}
+
+.calendar-days {
+  gap: 1px;
+}
+
+.calendar-spacer {
+  min-height: 24px;
+}
+
+.calendar-day {
+  width: 100%;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.calendar-day:hover {
+  background: var(--hover-fill);
+}
+
+.calendar-day.is-today:not(.is-selected) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 50%, var(--line));
+}
+
+.calendar-day.is-selected {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.time-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  height: 148px;
+}
+
+.time-col {
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.time-col button {
+  display: block;
+  width: 100%;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--number-font);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.time-col button.is-selected {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  font-weight: 650;
+}
+
+.picker-clear {
+  display: flex;
+  width: 100%;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 6px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.picker-clear:hover {
+  background: var(--hover-fill);
+}
+
+.picker-clear span {
+  font-size: 15px;
+  line-height: 1;
 }
 
 .schedule-actions {

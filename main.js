@@ -10,6 +10,7 @@ const {
   net,
   protocol,
   screen,
+  shell,
   Tray,
 } = require('electron');
 const fs = require('node:fs');
@@ -30,7 +31,7 @@ guardGuiOutputStream(process.stderr);
 
 const APP_NAME = '桌面便签';
 const SHORTCUT = 'CommandOrControl+Shift+Space';
-const DEFAULT_SIZE = { width: 420, height: 480 };
+const DEFAULT_SIZE = { width: 420, height: 340 };
 const SIZE_LIMITS = {
   minWidth: 320,
   maxWidth: 640,
@@ -47,6 +48,9 @@ const RESTORE_INSET = 38;
 const VALID_EDGES = new Set(['left', 'right', 'top', 'bottom']);
 const STAGING_SCHEME = 'staging-image';
 const MAX_STAGING_IMPORT_BATCH = 20;
+const BLOCKED_OPEN_EXTENSIONS = new Set([
+  '.exe', '.bat', '.cmd', '.com', '.msi', '.ps1', '.scr', '.vbs', '.js', '.jse', '.wsf', '.wsh', '.msc',
+]);
 const PREVIEW_MIN_WIDTH = 360;
 const PREVIEW_MIN_HEIGHT = 260;
 const PREVIEW_MAX_WIDTH = 1400;
@@ -274,13 +278,13 @@ async function importStagingPaths(filePaths) {
   const errors = [];
   for (const filePath of filePaths.slice(0, MAX_STAGING_IMPORT_BATCH)) {
     try {
-      imported.push(await store.importImageFile(filePath));
+      imported.push(await store.importLocalFile(filePath));
     } catch (error) {
       errors.push(getStagingError(error, `${path.basename(filePath)} 导入失败`));
     }
   }
   if (imported.length === 0) {
-    return { ok: false, error: errors[0] ?? '没有可导入的图片', errors };
+    return { ok: false, error: errors[0] ?? '没有可暂存的文件', errors };
   }
   return getStagingSnapshot({
     imported: imported.length,
@@ -322,14 +326,15 @@ async function pasteToStaging() {
       { imported: 1, source: 'clipboard-text' },
     );
   }
-  return { ok: false, error: '剪贴板中没有可暂存的文字或图片' };
+  return { ok: false, error: '剪贴板中没有可暂存的文字、图片或文件' };
 }
 
 async function chooseStagingImages() {
   const selection = await dialog.showOpenDialog(mainWindow, {
-    title: '上传图片到暂存区',
+    title: '添加到暂存区',
     properties: ['openFile', 'multiSelections'],
     filters: [
+      { name: '所有文件', extensions: ['*'] },
       { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] },
     ],
   });
@@ -347,6 +352,8 @@ async function copyStagingItem(id) {
     if (qaOutputDirectory) return { ok: true, type: item.type };
     if (item.type === 'text') {
       clipboard.writeText(item.text);
+    } else if (item.type === 'file') {
+      clipboard.writeText(item.filePath);
     } else {
       const image = nativeImage.createFromPath(await store.getImagePath(item.id, 'original'));
       if (image.isEmpty()) return { ok: false, error: '无法读取暂存图片' };
@@ -364,6 +371,7 @@ async function saveStagingImage(id, ownerWindow = mainWindow) {
     const item = await store.getItem(String(id));
     if (!item) return { ok: false, error: '暂存项不存在' };
     if (item.type === 'text') return saveStagingText(id, ownerWindow);
+    if (item.type === 'file') return saveStagingFile(id, ownerWindow);
     if (item.type !== 'image') return { ok: false, error: '暂存图片不存在' };
     const sourcePath = await store.getImagePath(item.id, 'original');
     if (qaOutputDirectory) {
@@ -406,6 +414,51 @@ async function saveStagingText(id, ownerWindow = mainWindow) {
   } catch (error) {
     return { ok: false, error: getStagingError(error, '保存文字失败') };
   }
+}
+
+async function saveStagingFile(id, ownerWindow = mainWindow) {
+  try {
+    const item = await getStagingStore().getItem(String(id));
+    if (!item || item.type !== 'file') return { ok: false, error: '暂存文件不存在' };
+    if (!item.exists) return { ok: false, error: '文件已不存在' };
+    if (qaOutputDirectory) {
+      const destination = path.join(qaOutputDirectory, `saved-${item.name}`);
+      await fs.promises.copyFile(item.filePath, destination);
+      return { ok: true, saved: true, type: 'file', qaPath: destination };
+    }
+    const selection = await dialog.showSaveDialog(ownerWindow, {
+      title: '另存文件副本',
+      defaultPath: path.join(app.getPath('documents'), item.name),
+    });
+    if (selection.canceled || !selection.filePath) return { ok: false, canceled: true };
+    await fs.promises.copyFile(item.filePath, selection.filePath);
+    return { ok: true, saved: true, type: 'file' };
+  } catch (error) {
+    return { ok: false, error: getStagingError(error, '保存文件失败') };
+  }
+}
+
+async function revealStagedFile(id) {
+  const item = await getStagingStore().getItem(String(id));
+  if (!item || item.type !== 'file') return { ok: false, error: '暂存文件不存在' };
+  if (!item.exists) return { ok: false, error: '文件已不存在' };
+  if (!qaOutputDirectory) shell.showItemInFolder(item.filePath);
+  return { ok: true, type: 'file', revealed: true };
+}
+
+async function openStagedFile(id) {
+  const item = await getStagingStore().getItem(String(id));
+  if (!item || item.type !== 'file') return { ok: false, error: '暂存文件不存在' };
+  if (!item.exists) return { ok: false, error: '文件已不存在' };
+  const extension = (item.extension || path.extname(item.filePath)).toLowerCase();
+  if (BLOCKED_OPEN_EXTENSIONS.has(extension)) {
+    if (!qaOutputDirectory) shell.showItemInFolder(item.filePath);
+    return { ok: true, type: 'file', revealed: true, blocked: true };
+  }
+  if (qaOutputDirectory) return { ok: true, type: 'file', opened: true };
+  const error = await shell.openPath(item.filePath);
+  if (error) return { ok: false, error: error || '无法打开文件' };
+  return { ok: true, type: 'file', opened: true };
 }
 
 function estimateWrappedLines(text, columns) {
@@ -457,7 +510,10 @@ function getPreviewBounds(item) {
   const maximumContentHeight = Math.max(1, availableHeight - PREVIEW_VERTICAL_CHROME);
   let contentWidth;
   let contentHeight;
-  if (item.type === 'text') {
+  if (item.type === 'file') {
+    contentWidth = 320;
+    contentHeight = 140;
+  } else if (item.type === 'text') {
     const textSize = getTextContentSize(
       item.text ?? '',
       maximumContentWidth,
@@ -500,7 +556,10 @@ function getHoverPreviewBounds(item) {
   const maxHeight = Math.min(HOVER_PREVIEW_MAX_HEIGHT, Math.max(120, workArea.height - 48));
   let width;
   let height;
-  if (item.type === 'text') {
+  if (item.type === 'file') {
+    width = Math.min(maxWidth, Math.max(HOVER_PREVIEW_MIN_WIDTH, 300));
+    height = Math.min(maxHeight, Math.max(HOVER_PREVIEW_MIN_HEIGHT, 158));
+  } else if (item.type === 'text') {
     const textSize = getTextContentSize(
       item.text ?? '',
       maxWidth,
@@ -633,7 +692,7 @@ async function showHoverPreviewWindow(id) {
     if (!canShowHoverPreview()) return { ok: false, error: '窗口不可预览' };
     if (isPreviewWindowOpen(previewWindow)) return { ok: true, skipped: true };
     const item = await getStagingStore().getItem(String(id));
-    if (!item || !['image', 'text'].includes(item.type)) return { ok: false, error: '暂存项不存在' };
+    if (!item || !['image', 'text', 'file'].includes(item.type)) return { ok: false, error: '暂存项不存在' };
     hoverPreviewItemId = item.id;
     hoverPreviewWantedId = item.id;
     const bounds = getHoverPreviewBounds(item);
@@ -641,7 +700,7 @@ async function showHoverPreviewWindow(id) {
     if (!hoverPreviewWindow || hoverPreviewWindow.isDestroyed()) {
       const candidate = new BrowserWindow({
         ...windowBounds,
-        title: item.type === 'text' ? '文字预览' : `图片预览 · ${item.name}`,
+        title: item.type === 'text' ? '文字预览' : item.type === 'file' ? `文件 · ${item.name}` : `图片预览 · ${item.name}`,
         icon: path.join(__dirname, 'assets', 'icon.png'),
         frame: false,
         transparent: true,
@@ -733,6 +792,7 @@ function keepHoverPreview() {
 async function openStagingPreviewWindow(id) {
   try {
     const item = await getStagingStore().getItem(String(id));
+    if (item?.type === 'file') return openStagedFile(item.id);
     if (!item || !['image', 'text'].includes(item.type)) return { ok: false, error: '暂存项不存在' };
     closeHoverPreviewWindow();
     const bounds = getPreviewBounds(item);
@@ -816,22 +876,26 @@ function isPreviewSender(event) {
 async function getPreviewData(event) {
   const id = isHoverPreviewSender(event) ? hoverPreviewItemId : previewItemId;
   const item = id ? await getStagingStore().getItem(id) : null;
-  if (!item || !['image', 'text'].includes(item.type)) return { ok: false, error: '暂存项不存在' };
+  if (!item || !['image', 'text', 'file'].includes(item.type)) return { ok: false, error: '暂存项不存在' };
   return { ok: true, item: serializeStagingItem(item) };
 }
 
 async function performStagingContextAction(action, id) {
   const item = await getStagingStore().getItem(String(id));
   if (!item) return { ok: false, action, error: '暂存项不存在' };
-  if (action === 'preview') {
+  if (action === 'preview' || action === 'open') {
+    if (item.type === 'file') return { ...(await openStagedFile(item.id)), action: 'open' };
     if (!['image', 'text'].includes(item.type)) return { ok: false, action, error: '无法预览该暂存项' };
     return { ...(await openStagingPreviewWindow(item.id)), action };
   }
+  if (action === 'reveal') return { ...(await revealStagedFile(item.id)), action };
   if (action === 'copy') return { ...(await copyStagingItem(item.id)), action };
   if (action === 'save') {
     const result = item.type === 'image'
       ? await saveStagingImage(item.id)
-      : await saveStagingText(item.id);
+      : item.type === 'file'
+        ? await saveStagingFile(item.id)
+        : await saveStagingText(item.id);
     return { ...result, action };
   }
   if (action === 'delete') {
@@ -860,7 +924,14 @@ async function showStagingContextMenu(id) {
       actionStarted = true;
       void performStagingContextAction(action, item.id).then(finish);
     };
-    const template = item.type === 'image' ? [
+    const template = item.type === 'file' ? [
+      { label: '打开', click: () => run('open') },
+      { label: '复制路径', click: () => run('copy') },
+      { label: '在文件夹中显示', click: () => run('reveal') },
+      { label: '另存副本…', click: () => run('save') },
+      { type: 'separator' },
+      { label: '删除暂存项', click: () => run('delete') },
+    ] : item.type === 'image' ? [
       { label: '悬浮预览', click: () => run('preview') },
       { label: '复制图片', click: () => run('copy') },
       { label: '下载 / 另存图片…', click: () => run('save') },
@@ -1619,7 +1690,9 @@ function registerIpc() {
     }
   });
   ipcMain.handle('staging:import-files', (_event, payloads) => importStagingPayloads(payloads));
+  ipcMain.handle('staging:import-paths', (_event, filePaths) => importStagingPaths(filePaths));
   ipcMain.handle('staging:pick-images', () => chooseStagingImages());
+  ipcMain.handle('staging:open-file', (_event, id) => openStagedFile(id));
   ipcMain.handle('staging:paste', () => pasteToStaging());
   ipcMain.handle('staging:copy', (_event, id) => copyStagingItem(id));
   ipcMain.handle('staging:save-image', (_event, id) => saveStagingImage(id));
@@ -1645,6 +1718,11 @@ function registerIpc() {
   });
   ipcMain.handle('preview:open-full', async (event) => {
     if (!isHoverPreviewSender(event) || !hoverPreviewItemId) return { ok: false, error: '侧边预览已关闭' };
+    const item = await getStagingStore().getItem(hoverPreviewItemId);
+    if (item?.type === 'file') {
+      closeHoverPreviewWindow();
+      return openStagedFile(item.id);
+    }
     return openStagingPreviewWindow(hoverPreviewItemId);
   });
   ipcMain.handle('preview:copy', (event) => (
@@ -2338,6 +2416,7 @@ async function runVisualQa(outputDirectory) {
     const requiredChecks = [
       'headerDateWorks', 'headerDecorationRemoved', 'headerDragSpaceWorks', 'todoTerminologyWorks',
       'createdMany', 'scrollsWhenOverflowing', 'directlyEditable', 'typographyImproved',
+      'fontSizeAdjustWorks',
       'singleLineCentered', 'emptyTodoDeletesImmediately', 'nonEmptyTodoRequiresConfirmation',
       'editorAutoHeightWorks', 'timeControlImproved', 'exactMinuteWorks',
       'directTimeInputWorks', 'dateOnlyWorks', 'emptyTimeWorks', 'reorderWorks', 'reorderPersisted',

@@ -1,6 +1,6 @@
 {
   "name": "desktop-note",
-  "version": "0.3.20",
+  "version": "0.3.21",
   "description": "支持待办与图文暂存工作区的透明桌面便签。",
   "main": "main.js",
   "author": "",

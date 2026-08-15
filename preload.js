@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('desktopNotes', {
   getWindowState: () => ipcRenderer.invoke('window:get-state'),
@@ -27,7 +27,19 @@ contextBridge.exposeInMainWorld('desktopNotes', {
       bytes: file?.bytes,
     })),
   ),
+  importStagingPaths: (filePaths) => ipcRenderer.invoke(
+    'staging:import-paths',
+    (Array.isArray(filePaths) ? filePaths : []).map(String).slice(0, 20),
+  ),
+  getPathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file) || '';
+    } catch {
+      return '';
+    }
+  },
   chooseStagingImages: () => ipcRenderer.invoke('staging:pick-images'),
+  openStagingFile: (id) => ipcRenderer.invoke('staging:open-file', String(id ?? '')),
   pasteToStaging: () => ipcRenderer.invoke('staging:paste'),
   copyStagingItem: (id) => ipcRenderer.invoke('staging:copy', String(id ?? '')),
   saveStagingImage: (id) => ipcRenderer.invoke('staging:save-image', String(id ?? '')),
