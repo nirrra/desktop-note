@@ -2257,6 +2257,13 @@ textarea:focus-visible {
 .app[data-edge="top"] .edge-handle svg { transform: rotate(90deg); }
 .app[data-edge="bottom"] .edge-handle svg { transform: rotate(-90deg); }
 
+.app.is-edge-hidden[data-edge] .edge-handle {
+  inset: 0;
+  width: auto;
+  height: auto;
+  transform: none;
+}
+
 .toast {
   position: fixed;
   z-index: 40;

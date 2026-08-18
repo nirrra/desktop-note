@@ -1095,18 +1095,6 @@ function clampNormalBounds(bounds) {
   };
 }
 
-function getDockedBounds(edge, sourceBounds = normalBounds) {
-  const base = clampNormalBounds(sourceBounds ?? getDefaultNormalBounds());
-  const { workArea } = screen.getDisplayMatching(base);
-  const bounds = { ...base };
-
-  if (edge === 'left') bounds.x = workArea.x - currentSize.width + EDGE_REVEAL;
-  if (edge === 'right') bounds.x = workArea.x + workArea.width - EDGE_REVEAL;
-  if (edge === 'top') bounds.y = workArea.y - currentSize.height + EDGE_REVEAL;
-  if (edge === 'bottom') bounds.y = workArea.y + workArea.height - EDGE_REVEAL;
-  return bounds;
-}
-
 function getEdgePreviewBounds(edge, sourceBounds = normalBounds) {
   const base = clampNormalBounds(sourceBounds ?? getDefaultNormalBounds());
   const { workArea } = screen.getDisplayMatching(base);
@@ -1162,11 +1150,57 @@ function getRestoredBounds(edge) {
   return clampNormalBounds(base);
 }
 
+function getCollapsedBounds(edge, sourceBounds = normalBounds) {
+  return getEdgeHandleBounds(edge, sourceBounds);
+}
+
+function restoreContentWindowLimits() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.setMinimumSize(SIZE_LIMITS.minWidth, SIZE_LIMITS.minHeight);
+  mainWindow.setMaximumSize(SIZE_LIMITS.maxWidth, SIZE_LIMITS.maxHeight);
+}
+
+function allowCollapsedWindowLimits(bounds) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.setMinimumSize(bounds.width, bounds.height);
+}
+
+function expandCollapsedBounds(handleBounds, edge) {
+  const y = handleBounds.y - Math.round((currentSize.height - handleBounds.height) / 2);
+  const x = handleBounds.x - Math.round((currentSize.width - handleBounds.width) / 2);
+  if (edge === 'left') return clampNormalBounds({ x: handleBounds.x, y, ...currentSize });
+  if (edge === 'right') {
+    return clampNormalBounds({
+      x: handleBounds.x + handleBounds.width - currentSize.width,
+      y,
+      ...currentSize,
+    });
+  }
+  if (edge === 'top') return clampNormalBounds({ x, y: handleBounds.y, ...currentSize });
+  return clampNormalBounds({
+    x,
+    y: handleBounds.y + handleBounds.height - currentSize.height,
+    ...currentSize,
+  });
+}
+
+function setDockedPresentation(edge, { previewed }) {
+  if (!VALID_EDGES.has(edge) || !mainWindow || mainWindow.isDestroyed()) return;
+  if (previewed) {
+    setManagedBounds(getEdgePreviewBounds(edge, normalBounds));
+    restoreContentWindowLimits();
+    return;
+  }
+  const bounds = getCollapsedBounds(edge, normalBounds);
+  allowCollapsedWindowLimits(bounds);
+  setManagedBounds(bounds);
+}
+
 function getInitialBounds() {
   normalBounds = persistedNormalBounds
     ? clampNormalBounds(persistedNormalBounds)
     : getDefaultNormalBounds();
-  return dockedEdge ? getDockedBounds(dockedEdge, normalBounds) : normalBounds;
+  return dockedEdge ? getCollapsedBounds(dockedEdge, normalBounds) : normalBounds;
 }
 
 function writeWindowState() {
@@ -1304,7 +1338,7 @@ function dockToEdge(edge) {
   clearTimeout(edgePreviewShowTimer);
   resetEdgeHoverTracking({ armed: false });
   sendWindowState();
-  setManagedBounds(getDockedBounds(edge, normalBounds));
+  setDockedPresentation(edge, { previewed: false });
   scheduleStateWrite();
   rebuildTrayMenu();
   return getPublicWindowState();
@@ -1314,13 +1348,16 @@ function restoreFromEdge({ focus = true } = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) return getPublicWindowState();
   if (dockedEdge) {
     const restored = getRestoredBounds(dockedEdge);
+    const wasCollapsed = !isEdgePreviewed;
     dockedEdge = null;
     isEdgePreviewed = false;
     clearTimeout(edgePreviewShowTimer);
     resetEdgeHoverTracking({ armed: false });
     normalBounds = restored;
     sendWindowState();
+    if (wasCollapsed) mainWindow.hide();
     setManagedBounds(restored);
+    restoreContentWindowLimits();
     scheduleStateWrite();
   }
   focus ? (mainWindow.show(), mainWindow.focus()) : mainWindow.showInactive();
@@ -1335,7 +1372,7 @@ function previewFromEdge() {
   edgeHoverLeftAt = 0;
   clearTimeout(edgePreviewShowTimer);
   mainWindow.hide();
-  setManagedBounds(getEdgePreviewBounds(dockedEdge, normalBounds));
+  setDockedPresentation(dockedEdge, { previewed: true });
   sendWindowState();
   refreshTransparentWindowSurface();
   edgePreviewShowTimer = setTimeout(() => {
@@ -1359,7 +1396,7 @@ function collapseEdgePreview() {
   isEdgePreviewed = false;
   resetEdgeHoverTracking({ armed: false });
   sendWindowState();
-  setManagedBounds(getDockedBounds(dockedEdge, normalBounds));
+  setDockedPresentation(dockedEdge, { previewed: false });
   refreshTransparentWindowSurface();
   edgePreviewShowTimer = setTimeout(() => {
     if (!mainWindow || mainWindow.isDestroyed() || !dockedEdge || isEdgePreviewed) return;
@@ -1441,12 +1478,12 @@ function setWindowSize(requestedSize) {
     ...nextSize,
   };
   normalBounds = clampNormalBounds(centered);
-  const target = dockedEdge
-    ? isEdgePreviewed
-      ? getEdgePreviewBounds(dockedEdge, normalBounds)
-      : getDockedBounds(dockedEdge, normalBounds)
-    : normalBounds;
-  setManagedBounds(target);
+  if (dockedEdge) {
+    setDockedPresentation(dockedEdge, { previewed: isEdgePreviewed });
+  } else {
+    restoreContentWindowLimits();
+    setManagedBounds(normalBounds);
+  }
   sendWindowState();
   scheduleStateWrite();
   return getPublicWindowState();
@@ -1454,11 +1491,21 @@ function setWindowSize(requestedSize) {
 
 function undockForManualMove(bounds = mainWindow?.getBounds()) {
   if (!mainWindow || mainWindow.isDestroyed() || !dockedEdge || !bounds) return false;
+  const fromCollapsed = !isEdgePreviewed;
+  const edge = dockedEdge;
   dockedEdge = null;
   isEdgePreviewed = false;
   clearTimeout(edgePreviewShowTimer);
   resetEdgeHoverTracking({ armed: false });
-  normalBounds = { ...bounds };
+  if (fromCollapsed) {
+    const expanded = expandCollapsedBounds(bounds, edge);
+    setManagedBounds(expanded);
+    restoreContentWindowLimits();
+    normalBounds = expanded;
+  } else {
+    restoreContentWindowLimits();
+    normalBounds = { ...bounds };
+  }
   sendWindowState();
   refreshTransparentWindowSurface();
   scheduleStateWrite();
@@ -1476,14 +1523,13 @@ function handleNativeWindowMove(bounds = mainWindow?.getBounds()) {
   if (isProgrammaticMove) finishProgrammaticMove();
 
   const expected = dockedEdge
-    ? (isEdgePreviewed ? getEdgePreviewBounds(dockedEdge, normalBounds) : getDockedBounds(dockedEdge, normalBounds))
+    ? (isEdgePreviewed ? getEdgePreviewBounds(dockedEdge, normalBounds) : getCollapsedBounds(dockedEdge, normalBounds))
     : (normalBounds ?? bounds);
   const draggedAway = !boundsAreClose(bounds, expected, 8);
   if (!draggedAway) return false;
 
   const undocked = undockForManualMove(bounds);
   closeHoverPreviewWindow();
-  normalBounds = { ...bounds };
   scheduleStateWrite();
   scheduleManualMoveFinished();
   return undocked;
@@ -1503,10 +1549,12 @@ function scheduleManualMoveFinished() {
 }
 
 function createWindow() {
+  const initialBounds = getInitialBounds();
+  const collapsedAtLaunch = Boolean(dockedEdge);
   mainWindow = new BrowserWindow({
-    ...getInitialBounds(),
-    minWidth: SIZE_LIMITS.minWidth,
-    minHeight: SIZE_LIMITS.minHeight,
+    ...initialBounds,
+    minWidth: collapsedAtLaunch ? initialBounds.width : SIZE_LIMITS.minWidth,
+    minHeight: collapsedAtLaunch ? initialBounds.height : SIZE_LIMITS.minHeight,
     maxWidth: SIZE_LIMITS.maxWidth,
     maxHeight: SIZE_LIMITS.maxHeight,
     title: APP_NAME,
@@ -1515,7 +1563,6 @@ function createWindow() {
     transparent: true,
     backgroundColor: '#00000000',
     hasShadow: false,
-    roundedCorners: true,
     roundedCorners: true,
     resizable: false,
     maximizable: false,
@@ -1767,6 +1814,10 @@ function boundsExposeEdge(bounds, edge) {
   if (edge === 'right') return Math.abs(bounds.x - (workArea.x + workArea.width - EDGE_REVEAL)) <= tolerance;
   if (edge === 'top') return Math.abs(bounds.y + bounds.height - (workArea.y + EDGE_REVEAL)) <= tolerance;
   return Math.abs(bounds.y - (workArea.y + workArea.height - EDGE_REVEAL)) <= tolerance;
+}
+
+function collapsedBoundsMatchHandle(bounds, edge) {
+  return boundsAreClose(bounds, getCollapsedBounds(edge, normalBounds), 2);
 }
 
 function edgeHandleFacesCenter(edge, style) {
@@ -2176,7 +2227,8 @@ async function runVisualQa(outputDirectory) {
       && !collapsedVisibility.previewClass
       && collapsedVisibility.panelOpacity === '0'
       && collapsedVisibility.handleDisplay === 'grid'
-      && boundsExposeEdge(mainWindow.getBounds(), 'right');
+      && boundsExposeEdge(mainWindow.getBounds(), 'right')
+      && collapsedBoundsMatchHandle(mainWindow.getBounds(), 'right');
     restoreFromEdge({ focus: false });
     await delay(240);
 
@@ -2233,7 +2285,8 @@ async function runVisualQa(outputDirectory) {
         && !cleanState.toastVisible
         && (!previewWindow || previewWindow.isDestroyed())
         && (!hoverPreviewWindow || hoverPreviewWindow.isDestroyed())
-        && boundsExposeEdge(mainWindow.getBounds(), 'top'),
+        && boundsExposeEdge(mainWindow.getBounds(), 'top')
+        && collapsedBoundsMatchHandle(mainWindow.getBounds(), 'top'),
       );
     }
     const repeatedEdgeCollapseClean = repeatedEdgeCollapseChecks.every(Boolean);
@@ -2329,7 +2382,8 @@ async function runVisualQa(outputDirectory) {
       && rightOvershootVisibility.rendererEdge === 'right'
       && rightOvershootVisibility.panelOpacity === '0'
       && rightOvershootVisibility.handleDisplay === 'grid'
-      && boundsExposeEdge(mainWindow.getBounds(), 'right');
+      && boundsExposeEdge(mainWindow.getBounds(), 'right')
+      && collapsedBoundsMatchHandle(mainWindow.getBounds(), 'right');
     await captureWindow(path.join(qaDirectory, '08-right-overshoot-hidden.png'));
     restoreFromEdge({ focus: false });
     await delay(240);
@@ -2364,6 +2418,7 @@ async function runVisualQa(outputDirectory) {
         && visibility.panelOpacity === '0'
         && visibility.handleDisplay === 'grid'
         && boundsExposeEdge(mainWindow.getBounds(), edge)
+        && collapsedBoundsMatchHandle(mainWindow.getBounds(), edge)
         && edgeHandleShapeChecks[edge];
       await captureWindow(path.join(
         qaDirectory,
