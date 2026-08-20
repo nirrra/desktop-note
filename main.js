@@ -2551,6 +2551,7 @@ async function runVisualQa(outputDirectory) {
       'singleLineCentered', 'emptyTodoDeletesImmediately', 'nonEmptyTodoRequiresConfirmation',
       'editorAutoHeightWorks', 'timeControlImproved', 'exactMinuteWorks',
       'directTimeInputWorks', 'dateOnlyWorks', 'emptyTimeWorks', 'reorderWorks', 'reorderPersisted',
+      'sortOpenItemsByTimeWorks',
       'v2MigrationWorks', 'launchAtLoginWorks', 'launchAtLoginSettingVisible', 'settingsReverseScrollWorks',
       'stagingWorkspaceWorks', 'stagingReorderWorks', 'stagingTextPersistenceWorks', 'stagingDeleteWorks',
       'stagingImageActionsWork', 'imageProtocolWorks', 'stagingPreviewWorks',

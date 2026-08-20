@@ -448,6 +448,12 @@ textarea:focus-visible {
   stroke-width: 1.55;
 }
 
+.sort-time-button:hover,
+.sort-time-button:focus-visible {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 .workspace-stack {
   position: relative;
   min-height: 0;

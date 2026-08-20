@@ -23,7 +23,7 @@ const previewRenderer = read('src/preview.js');
 const previewPreload = read('src/preview-preload.cjs');
 
 assert.equal(packageJson.main, 'main.js');
-assert.equal(packageJson.version, '0.3.24');
+assert.equal(packageJson.version, '0.3.25');
 assert.equal(packageJson.build.productName, '桌面便签');
 assert.equal(packageJson.build.artifactName, 'desktop-note-${version}-${arch}.${ext}');
 assert.ok(packageJson.build.win.target.some((target) => target.target === 'portable'));
@@ -173,6 +173,9 @@ assert.match(html, /class="reorder-handle staging-reorder"[^>]*draggable="true"/
 assert.match(html, /class="staging-thumbnail"/);
 assert.match(html, /class="staging-text-editor"/);
 assert.match(html, /id="pinButton"/);
+assert.match(html, /id="sortByTimeButton"/);
+assert.match(renderer, /function sortOpenItemsByTime/);
+assert.match(css, /\.sort-time-button:hover/);
 assert.match(html, /id="closeButton"/);
 assert.match(html, /id="itemComposerInput"/);
 assert.match(html, /class="item-done"/);

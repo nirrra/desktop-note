@@ -225,6 +225,7 @@ const elements = {
   settingsContent: document.querySelector('.settings-content'),
   hideButton: document.querySelector('#hideButton'),
   pinButton: document.querySelector('#pinButton'),
+  sortByTimeButton: document.querySelector('#sortByTimeButton'),
   closeButton: document.querySelector('#closeButton'),
   itemComposerInput: document.querySelector('#itemComposerInput'),
   edgeHandle: document.querySelector('#edgeHandle'),
@@ -744,6 +745,39 @@ function clearDropMarkers() {
   for (const row of document.querySelectorAll('.item-row, .staging-row')) {
     row.classList.remove('is-drop-before', 'is-drop-after');
   }
+}
+
+function scheduleSortKey(schedule, now = new Date()) {
+  const normalized = normalizeSchedule(schedule);
+  if (normalized.mode === 'datetime') {
+    const stamp = Date.parse(`${normalized.value}:00`);
+    return Number.isFinite(stamp) ? stamp : Number.POSITIVE_INFINITY;
+  }
+  if (normalized.mode === 'date') {
+    const stamp = Date.parse(`${normalized.value}T00:00:00`);
+    return Number.isFinite(stamp) ? stamp : Number.POSITIVE_INFINITY;
+  }
+  if (normalized.mode === 'time') {
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const stamp = Date.parse(`${today}T${normalized.value}:00`);
+    return Number.isFinite(stamp) ? stamp : Number.POSITIVE_INFINITY;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function sortOpenItemsByTime() {
+  const now = new Date();
+  const open = state.items.filter((item) => !item.done);
+  const closed = state.items.filter((item) => item.done);
+  open.sort((first, second) => {
+    const delta = scheduleSortKey(first.schedule, now) - scheduleSortKey(second.schedule, now);
+    return delta !== 0 ? delta : first.createdAt - second.createdAt;
+  });
+  state.items = [...open, ...closed];
+  saveState();
+  renderItems();
+  showToast('已按时间排序未完成待办');
+  return true;
 }
 
 function setItemDone(itemId, done) {
@@ -1394,6 +1428,9 @@ function bindEvents() {
   elements.pinButton.addEventListener('click', async () => {
     applyWindowState(await bridge.setPinned(!windowState.pinned));
   });
+  elements.sortByTimeButton.addEventListener('click', () => {
+    sortOpenItemsByTime();
+  });
   elements.edgeHandle.addEventListener('click', async () => applyWindowState(await bridge.restoreFromEdge()));
   for (const closeButton of elements.closePanelButtons) closeButton.addEventListener('click', closePanels);
 
@@ -1800,6 +1837,22 @@ window.__desktopQa = {
     const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY));
     const reorderPersisted = persisted.items[0].id === movedId;
 
+    const sortLateId = createItem('较晚时间');
+    const sortEarlyId = createItem('较早时间');
+    const sortNoneId = createItem('没有时间');
+    const sortDoneId = createItem('已完成更早');
+    updateSchedule(sortLateId, { mode: 'time', value: '23:00' });
+    updateSchedule(sortEarlyId, { mode: 'time', value: '08:00' });
+    updateSchedule(sortDoneId, { mode: 'time', value: '01:00' });
+    setItemDone(sortDoneId, true);
+    elements.sortByTimeButton.click();
+    const openAfterSort = state.items.filter((item) => !item.done).map((item) => item.id);
+    const sortOpenItemsByTimeWorks = Boolean(elements.sortByTimeButton)
+      && openAfterSort.indexOf(sortEarlyId) < openAfterSort.indexOf(sortLateId)
+      && openAfterSort.indexOf(sortLateId) < openAfterSort.indexOf(sortNoneId)
+      && state.items.findIndex((item) => item.id === sortDoneId)
+        > state.items.findIndex((item) => item.id === sortNoneId);
+
     await bridge.clearStaging();
     const referenceImport = await bridge.importStagingFiles([{
       name: '参考图.png',
@@ -1906,6 +1959,7 @@ window.__desktopQa = {
       emptyTimeWorks,
       reorderWorks,
       reorderPersisted,
+      sortOpenItemsByTimeWorks,
       stagingWorkspaceWorks,
       stagingReorderWorks,
       stagingTextPersistenceWorks,
