@@ -100,6 +100,7 @@ let currentSize = { ...DEFAULT_SIZE };
 let normalBounds = null;
 let persistedNormalBounds = null;
 let isProgrammaticMove = false;
+let isApplyingManagedBounds = false;
 let programmaticMoveTimer = null;
 let programmaticMoveTarget = null;
 let manualMoveFinishTimer = null;
@@ -1258,6 +1259,29 @@ function boundsAreClose(first, second, tolerance = 2) {
   return ['x', 'y', 'width', 'height'].every((key) => Math.abs(first[key] - second[key]) <= tolerance);
 }
 
+function isManagedMoveEcho(actual, target) {
+  if (!actual || !target) return false;
+  if (boundsAreClose(actual, target, 8)) return true;
+  const positionClose = Math.abs(actual.x - target.x) <= 8 && Math.abs(actual.y - target.y) <= 8;
+  const widthDelta = actual.width - target.width;
+  const heightDelta = actual.height - target.height;
+  return positionClose
+    && widthDelta >= -2
+    && heightDelta >= -2
+    && widthDelta <= 24
+    && heightDelta <= 24;
+}
+
+function stillAttachedToEdge(bounds, edge) {
+  if (!bounds || !VALID_EDGES.has(edge)) return false;
+  const { workArea } = screen.getDisplayMatching(normalBounds ?? bounds);
+  const tolerance = 16;
+  if (edge === 'left') return Math.abs(bounds.x - workArea.x) <= tolerance;
+  if (edge === 'right') return Math.abs(bounds.x + bounds.width - (workArea.x + workArea.width)) <= tolerance;
+  if (edge === 'top') return Math.abs(bounds.y - workArea.y) <= tolerance;
+  return Math.abs(bounds.y + bounds.height - (workArea.y + workArea.height)) <= tolerance;
+}
+
 function finishProgrammaticMove() {
   clearTimeout(programmaticMoveTimer);
   isProgrammaticMove = false;
@@ -1270,11 +1294,13 @@ function setManagedBounds(bounds) {
   programmaticMoveTarget = { ...bounds };
   clearTimeout(manualMoveFinishTimer);
   clearTimeout(programmaticMoveTimer);
-  mainWindow.setBounds(bounds, false);
-  // Windows DPI min-track size can inflate a 26px strip to ~38px. Treat the
-  // size the OS actually accepted as the managed target, or the next move
-  // event looks like the user dragged away from the edge.
-  programmaticMoveTarget = mainWindow.getBounds();
+  isApplyingManagedBounds = true;
+  try {
+    mainWindow.setBounds(bounds, false);
+    programmaticMoveTarget = mainWindow.getBounds();
+  } finally {
+    isApplyingManagedBounds = false;
+  }
   programmaticMoveTimer = setTimeout(finishProgrammaticMove, 220);
 }
 
@@ -1551,13 +1577,17 @@ function undockForManualMove(bounds = mainWindow?.getBounds()) {
 }
 
 function handleNativeWindowMove(bounds = mainWindow?.getBounds()) {
+  if (isApplyingManagedBounds) return false;
   if (!mainWindow || mainWindow.isDestroyed() || !bounds) return false;
 
   // setBounds() also emits move events. Ignore only the exact managed target;
   // a different bounds while the timer is active means the user has already
   // started dragging the frameless window and must take ownership immediately.
-  if (isProgrammaticMove && boundsAreClose(bounds, programmaticMoveTarget)) return false;
+  if (isProgrammaticMove && isManagedMoveEcho(bounds, programmaticMoveTarget)) return false;
+  if (isProgrammaticMove && dockedEdge && stillAttachedToEdge(bounds, dockedEdge)) return false;
   if (isProgrammaticMove) finishProgrammaticMove();
+
+  if (dockedEdge && stillAttachedToEdge(bounds, dockedEdge)) return false;
 
   const expected = dockedEdge
     ? getExpectedDockedBounds(dockedEdge)
@@ -1573,7 +1603,7 @@ function handleNativeWindowMove(bounds = mainWindow?.getBounds()) {
 }
 
 function handleManualMoveFinished(cursorPoint = screen.getCursorScreenPoint()) {
-  if (!mainWindow || mainWindow.isDestroyed() || isProgrammaticMove || dockedEdge) return;
+  if (!mainWindow || mainWindow.isDestroyed() || isApplyingManagedBounds || isProgrammaticMove || dockedEdge) return;
   if (isPreviewWindowOpen(previewWindow) || isPreviewWindowOpen(hoverPreviewWindow)) return;
   normalBounds = mainWindow.getBounds();
   const edge = detectNearestEdge(normalBounds, cursorPoint);

@@ -6,8 +6,8 @@
 
 到 [GitHub Releases](https://github.com/nirrra/desktop-note/releases/latest) 下载最新版：
 
-- **推荐** [`desktop-note-0.3.23-x64.zip`](https://github.com/nirrra/desktop-note/releases/download/v0.3.23/desktop-note-0.3.23-x64.zip)：解压一次后双击 `桌面便签.exe`，后续启动更快
-- 或 [`desktop-note-0.3.23-x64.exe`](https://github.com/nirrra/desktop-note/releases/download/v0.3.23/desktop-note-0.3.23-x64.exe)：单文件便携版，无需解压，但每次启动会慢一些
+- **推荐** [`desktop-note-0.3.24-x64.zip`](https://github.com/nirrra/desktop-note/releases/download/v0.3.24/desktop-note-0.3.24-x64.zip)：解压一次后双击 `桌面便签.exe`，后续启动更快
+- 或 [`desktop-note-0.3.24-x64.exe`](https://github.com/nirrra/desktop-note/releases/download/v0.3.24/desktop-note-0.3.24-x64.exe)：单文件便携版，无需解压，但每次启动会慢一些
 
 可用同目录的 `SHA256SUMS.txt` 校验完整性。当前构建没有商业代码签名，Windows 首次运行可能提示“未知发布者”，属预期现象。
 
