@@ -23,7 +23,7 @@ const previewRenderer = read('src/preview.js');
 const previewPreload = read('src/preview-preload.cjs');
 
 assert.equal(packageJson.main, 'main.js');
-assert.equal(packageJson.version, '0.3.22');
+assert.equal(packageJson.version, '0.3.23');
 assert.equal(packageJson.build.productName, '桌面便签');
 assert.equal(packageJson.build.artifactName, 'desktop-note-${version}-${arch}.${ext}');
 assert.ok(packageJson.build.win.target.some((target) => target.target === 'portable'));
@@ -288,6 +288,9 @@ assert.match(main, /function setDockedPresentation/);
 assert.match(main, /function restoreContentWindowLimits/);
 assert.match(main, /function allowCollapsedWindowLimits/);
 assert.match(main, /function collapsedBoundsMatchHandle/);
+assert.match(main, /function snapCollapsedBoundsToWorkArea/);
+assert.match(main, /function rememberCollapsedWindowBounds/);
+assert.match(main, /collapsedWindowBounds/);
 assert.doesNotMatch(main, /function getDockedBounds/);
 assert.match(css, /\.app\.is-edge-hidden\[data-edge\] \.edge-handle/);
 assert.match(main, /function processEdgeHoverPoint/);
